@@ -3,8 +3,8 @@
   <rect width="512" height="512" fill="#161616"/>
   <!-- the crystal, cut in two along the fault and slipped apart -->
   <g transform="translate(-14,-12)">
+    <polygon points="256,84 352,190 345,246 172,312 160,190" fill="#825A6D"/>
     <polygon points="256,84 160,190 240,218" fill="#A17A8F"/>
-    <polygon points="256,84 240,218 352,190 345,246 172,312 160,190" fill="#825A6D"/>
     <polygon points="160,190 240,218 228,290 172,312" fill="#6A475A"/>
   </g>
   <g transform="translate(14,14)">

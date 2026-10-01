@@ -157,7 +157,8 @@ export function validateRound(run, tokenPayload, nowMs) {
   if (!Number.isFinite(elapsed) || elapsed < 0) return 'bad token time';
   if (elapsed > TOKEN_TTL_MS) return 'token expired';
   const sec = elapsed / 1000;
-  if (maxCombo > 40 || combos > sliced / 3 + 1 || (combos === 0) !== (maxCombo === 0)) return 'combo mismatch';
+  // one unbroken two-finger chain through an Overclock can run long, so the cap is generous
+  if (maxCombo > 90 || maxCombo > sliced || combos > sliced / 3 + 1 || (combos === 0) !== (maxCombo === 0)) return 'combo mismatch';
   if (run.mode === 'classic') {
     if (bossHits !== 0) return 'no auditor in classic';
     if (sliced > 4000 || sliced > sec * 5 + 20) return 'round too fast';
