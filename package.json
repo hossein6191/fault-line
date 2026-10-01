@@ -1,0 +1,19 @@
+{
+  "name": "fault-line",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Your swipe is the fault line. A glass-shattering arcade game for the Seismic community.",
+  "scripts": {
+    "dev": "node serve.mjs 5174",
+    "start": "node serve.mjs 5174",
+    "test": "node tools/smoke.mjs",
+    "icons": "node tools/make-icons.mjs"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.35.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

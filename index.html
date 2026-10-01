@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Fault Line</title>
+<meta name="description" content="Your swipe is the fault line. Shatter the glass, never cut what is shielded. A Seismic community build.">
+<meta name="theme-color" content="#161616">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta property="og:title" content="Fault Line">
+<meta property="og:description" content="Your swipe is the fault line. Shatter the glass, never cut what is shielded.">
+<meta property="og:type" content="website">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="game" aria-label="Fault Line"></canvas>
+
+<div class="overlay" id="title">
+  <div class="panel">
+    <div class="eyebrow">Seismic community build</div>
+    <h1 class="logo">Fault <em>Line</em></h1>
+    <p class="lede">Your swipe is the fault line. Shatter the glass the Watchers send up, and never cut what is shielded.</p>
+    <div class="modes" role="tablist" aria-label="Mode">
+      <button class="mode on" data-mode="arcade" type="button" role="tab" aria-selected="true">Arcade <span>60 s</span></button>
+      <button class="mode" data-mode="classic" type="button" role="tab" aria-selected="false">Classic</button>
+      <button class="mode" data-mode="daily" type="button" role="tab" aria-selected="false">Daily <span id="daily-date"></span></button>
+    </div>
+    <div class="controls">
+      <div id="mode-text"><span></span></div>
+      <div><span>Three or more in one swipe is an aftershock. Cut a hexagon to trigger its power.</span></div>
+    </div>
+    <div class="row">
+      <button id="btn-run" class="primary" type="button">Play</button>
+      <div class="best">Best <b id="best-title">—</b></div>
+    </div>
+    <div class="links">
+      <button class="ghost small" id="btn-board" type="button">Leaderboard</button>
+      <button class="ghost small" id="btn-missions" type="button">Missions <span id="rank-badge" class="badge"></span></button>
+      <button class="ghost small" id="btn-settings" type="button">Settings</button>
+      <button class="ghost small hidden" id="btn-install" type="button">Install</button>
+    </div>
+    <div class="foot">Fan-made for the Seismic community, not an official Seismic product. No wallet, no account.</div>
+  </div>
+</div>
+
+<div class="overlay center hidden" id="over">
+  <div class="panel wide">
+    <div class="eyebrow" id="o-eyebrow">Round complete</div>
+    <div class="result">
+      <div class="mag"><b id="o-score">0</b></div>
+      <div class="tier" id="o-tier">M 1.00 · Micro</div>
+      <div class="killer" id="o-line"></div>
+    </div>
+    <dl class="stats">
+      <div><dt>Shattered</dt><dd id="o-sliced">0</dd></div>
+      <div><dt>Best aftershock</dt><dd id="o-combo">—</dd></div>
+      <div><dt>Clean cuts</dt><dd id="o-clean">0</dd></div>
+      <div><dt>Best</dt><dd id="o-best">0</dd></div>
+      <div><dt>Aftershocks</dt><dd id="o-combos">0</dd></div>
+      <div><dt>Auditor</dt><dd id="o-boss">—</dd></div>
+      <div><dt>Shield hits</dt><dd id="o-shield">0</dd></div>
+      <div><dt>Rank</dt><dd id="o-rank">—</dd></div>
+    </dl>
+    <div id="o-missions" class="done-list"></div>
+    <div id="o-name" class="name-row hidden">
+      <label for="name-input">Name for the leaderboard</label>
+      <input id="name-input" maxlength="14" autocomplete="nickname" placeholder="Rocky">
+      <button class="ghost small" id="btn-name" type="button">Post score</button>
+    </div>
+    <div class="card"><img id="o-card" alt="Share card for this round"></div>
+    <div class="row">
+      <button id="btn-again" class="primary" type="button">Play again</button>
+      <button id="btn-save" class="ghost" type="button">Save card</button>
+      <button id="btn-share" class="ghost" type="button">Share</button>
+      <button id="btn-copy" class="ghost" type="button">Copy text</button>
+      <button id="btn-home" class="ghost" type="button">Menu</button>
+    </div>
+    <div class="foot" id="o-note"></div>
+  </div>
+</div>
+
+<div class="overlay center hidden" id="pause">
+  <div class="panel">
+    <div class="eyebrow">Paused</div>
+    <h2 class="logo small">Take a breath</h2>
+    <div class="row">
+      <button id="btn-resume" class="primary" type="button">Resume</button>
+      <button id="btn-restart" class="ghost" type="button">Restart</button>
+      <button id="btn-quit" class="ghost" type="button">Menu</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay center hidden" id="board">
+  <div class="panel wide">
+    <div class="head"><div class="eyebrow">Leaderboard</div><button class="x" data-close="board" type="button" aria-label="Close">×</button></div>
+    <div class="tabs"><button class="tab on" data-board="arcade" type="button">Arcade</button><button class="tab" data-board="classic" type="button">Classic</button><button class="tab" data-board="daily" type="button">Today</button></div>
+    <div id="board-status" class="muted">Loading…</div>
+    <ol id="board-list" class="board"></ol>
+    <div id="board-you" class="you"></div>
+    <div class="name-row">
+      <label for="board-name">Your name</label>
+      <input id="board-name" maxlength="14" autocomplete="nickname" placeholder="Rocky">
+      <button class="ghost small" id="btn-board-name" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay center hidden" id="missions">
+  <div class="panel wide">
+    <div class="head"><div class="eyebrow">Missions and rank</div><button class="x" data-close="missions" type="button" aria-label="Close">×</button></div>
+    <div class="rank"><div class="rank-level" id="rank-level">1.0</div><div><div class="rank-title" id="rank-title">Micro</div><div class="bar"><i id="rank-bar"></i></div><div class="muted small" id="rank-next"></div></div></div>
+    <ul id="mission-list" class="missions"></ul>
+    <div class="eyebrow" style="margin-top:16px">Blades</div>
+    <div id="blades" class="skins"></div>
+    <div class="eyebrow" style="margin-top:16px">Lifetime</div>
+    <dl class="stats" id="life-stats"></dl>
+  </div>
+</div>
+
+<div class="overlay center hidden" id="settings">
+  <div class="panel">
+    <div class="head"><div class="eyebrow">Settings</div><button class="x" data-close="settings" type="button" aria-label="Close">×</button></div>
+    <div class="toggles">
+      <label><input type="checkbox" id="s-sound"> Sound effects</label>
+      <label><input type="checkbox" id="s-music"> Music</label>
+      <label><input type="checkbox" id="s-shake"> Screen shake</label>
+      <label><input type="checkbox" id="s-vibrate"> Vibration (phones)</label>
+    </div>
+    <div class="foot">Progress, missions and your best rounds live in this browser. The leaderboard uses a random player id, never an account.</div>
+  </div>
+</div>
+
+<button id="btn-pause" class="hidden" type="button" aria-label="Pause">II</button>
+<button id="btn-mute" type="button" aria-label="Toggle sound">sound on</button>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
