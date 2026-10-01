@@ -56,6 +56,7 @@ export class Input {
     document.addEventListener('gesturestart', (e) => e.preventDefault());
 
     window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;   // leave browser shortcuts alone
       const tag = e.target && e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (tag === 'BUTTON' && (e.code === 'Enter' || e.code === 'Space')) return;

@@ -53,7 +53,8 @@ export class Music {
     this.out.connect(this.getMaster());
     // a dotted-eighth echo on the plucked line only
     const d = c.createDelay(1), fb = c.createGain(), lp = c.createBiquadFilter();
-    d.delayTime.value = 0.3; fb.gain.value = 0.32; lp.type = 'lowpass'; lp.frequency.value = 2400;
+    // a fixed delay time: retuning a delay line bends its pitch
+    d.delayTime.value = 0.29; fb.gain.value = 0.32; lp.type = 'lowpass'; lp.frequency.value = 2400;
     d.connect(lp); lp.connect(fb); fb.connect(d); lp.connect(this.out);
     this.echo = d;
     const n = c.sampleRate;
@@ -69,12 +70,10 @@ export class Music {
     if (!this.out) this.build(c);
     if (!this.active()) return;
     const now = c.currentTime;
-    if (this.next < now - 0.2) this.next = now + 0.04;   // woke from a stalled tab: do not replay the gap
+    if (this.next < now) this.next = now + 0.03;   // never book a note in the past (stalled tab, slow frame)
     while (this.next < now + LOOKAHEAD) {
       this.play(c, this.next, this.step);
-      const sixteenth = 60 / this.bpm() / 4;
-      if (this.echo) this.echo.delayTime.setTargetAtTime(sixteenth * 3, this.next, 0.05);
-      this.next += sixteenth;
+      this.next += 60 / this.bpm() / 4;
       this.step = (this.step + 1) % 128;
     }
   }

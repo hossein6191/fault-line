@@ -69,7 +69,7 @@ export function preflight(req, res) {
 export async function readJson(req) {
   let b;
   try { b = req.body; } catch (e) { return null; }
-  if (b !== undefined || req.readableEnded || req.complete) {
+  if (b !== undefined || req.readableEnded || req.destroyed) {
     if (typeof b === 'string') { try { b = JSON.parse(b); } catch (e) { return null; } }
     return b && typeof b === 'object' && !Buffer.isBuffer(b) && !Array.isArray(b) ? b : null;
   }
@@ -106,13 +106,15 @@ export function dailySeed(date) {
   return parseInt(hex, 16) >>> 0;
 }
 
-const BAD = ['fuck', 'shit', 'cunt', 'nigg', 'fag', 'bitch', 'dick', 'cock', 'pussy', 'rape', 'nazi', 'hitler', 'kike', 'whore', 'slut', 'retard'];
+// stems that are never innocent match anywhere; short ones only as whole words
+const BAD_ANY = ['fuck', 'cunt', 'nigg', 'hitler', 'kike', 'whore', 'pussy', 'bitch'];
+const BAD_WORD = ['shit', 'fag', 'dick', 'cock', 'rape', 'nazi', 'slut', 'retard'];
 export function cleanName(raw) {
-  let s = String(raw || '').normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/[^A-Za-z0-9_ .\-؀-ۿ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 14);
-  const flat = s.toLowerCase().replace(/[^a-z]/g, '');
-  if (BAD.some((w) => flat.includes(w))) s = 'Rocky';
+  let s = String(raw || '').normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/[^A-Za-z0-9_ .\-\u0600-\u06FF]/g, '').replace(/\s+/g, ' ').trim().slice(0, 14);
+  const lower = s.toLowerCase(), flat = lower.replace(/[^a-z]/g, ''), words = lower.split(/[^a-z]+/);
+  if (BAD_ANY.some((w) => flat.includes(w)) || BAD_WORD.some((w) => words.includes(w) || flat === w)) s = 'Player';
   // at least two visible base characters (combining marks and format characters do not count)
-  if (s.replace(/[\p{M}\p{Cc}\s]/gu, '').length < 2) s = 'Rocky';
+  if (s.replace(/[\p{M}\p{Cc}\s]/gu, '').length < 2) s = 'Player';
   return s;
 }
 
@@ -143,7 +145,7 @@ export function compositeScore(score, sliced) {
   return Math.floor(score) * 1000 + Math.min(999, Math.max(0, Math.floor(sliced)));
 }
 
-export const TOKEN_TTL_MS = 45 * 60 * 1000;
+export const TOKEN_TTL_MS = 6 * 60 * 60 * 1000;   // a paused round can sit for a long while
 export const MODES = ['arcade', 'classic', 'daily'];
 
 // Server-side plausibility for a round. Returns an error string or null.
@@ -159,16 +161,20 @@ export function validateRound(run, tokenPayload, nowMs) {
   const sec = elapsed / 1000;
   // one unbroken two-finger chain through an Overclock can run long, so the cap is generous
   if (maxCombo > 90 || maxCombo > sliced || combos > sliced / 3 + 1 || (combos === 0) !== (maxCombo === 0)) return 'combo mismatch';
+  // The most a round can pay: 3 per target (a 2-point Star, cut clean), the
+  // combo bonus (each target sits in at most one combo) and 30 of blitz per combo.
+  const base = sliced * 3 + sliced + combos * 30;
   if (run.mode === 'classic') {
-    if (bossHits !== 0) return 'no auditor in classic';
-    if (sliced > 4000 || sliced > sec * 5 + 20) return 'round too fast';
+    if (bossHits !== 0) return 'no core in classic';
+    // no clock, so the bound is the pace: what the spawner can throw per second
+    if (sliced > sec * 5 + 3) return 'round too fast';
+    if (score > base || score > sec * 30 + 10) return 'score too high';
   } else {
-    // a timed round is 60 s plus the Auditor; nothing finishes sooner
+    // a timed round is 60 s plus the Core; nothing finishes sooner
     if (sec < 58) return 'round too fast';
     if (sliced > 420 || bossHits > 60) return 'out of range';
+    // Amplifier can double everything; then the Core and the three end bonuses
+    if (score > (base + bossHits + 10) * 2 + 140 || score > 3000) return 'score too high';
   }
-  // most a round can pay: 8 per target (3-point target, doubled, clean cut), combo and chain bonuses, the Auditor
-  const cap = sliced * 6 + combos * (maxCombo * 2 + 60) + bossHits * 2 + 20 + 140;
-  if (score > cap || score > 20000) return 'score too high';
   return null;
 }

@@ -29,13 +29,13 @@ export default async function handler(req, res) {
     const details = await r.mget(...ids.map(detail));
     entries = ids.map((id, i) => {
       const o = parse(details[i]);
-      return { rank: i + 1, name: o.name || 'Rocky', score: o.score ?? 0, sliced: o.sliced ?? 0, maxCombo: o.maxCombo ?? 0, you: pid ? id === pid : false };
+      return { rank: i + 1, name: o.name || 'Player', score: o.score ?? 0, sliced: o.sliced ?? 0, maxCombo: o.maxCombo ?? 0, you: pid ? id === pid : false };
     });
   }
   let you = null;
   if (pid) {
     const rank = await r.zrevrank(boardKey, pid);
-    if (rank != null) { const o = parse(await r.get(detail(pid))); you = { rank: rank + 1, score: o.score ?? 0, name: o.name || 'Rocky' }; }
+    if (rank != null) { const o = parse(await r.get(detail(pid))); you = { rank: rank + 1, score: o.score ?? 0, name: o.name || 'Player' }; }
   }
   res.setHeader('Access-Control-Allow-Origin', '*');
   return send(res, 200, { online: true, board: mode, date, total, entries, you });

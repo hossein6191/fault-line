@@ -1,6 +1,5 @@
-// Share card: a 1200x630 image of the round with the cut running through it.
-import { drawRocky, drawCrystal, POSES, PAL } from './rocky.js';
-import { makeContourTile } from './world.js';
+// Share card: a 1200x630 strip of the seismogram with the round written on it.
+import { drawPaper } from './paper.js';
 import { TYPES } from './targets.js';
 
 function setSpacing(g, px) { if ('letterSpacing' in g) g.letterSpacing = px + 'px'; }
@@ -11,72 +10,74 @@ export async function renderCard(res, url) {
   c.width = W; c.height = H;
   const g = c.getContext('2d');
   try {
-    await Promise.all([
-      document.fonts.load('400 40px "Instrument Serif"'),
-      document.fonts.load('italic 400 44px "Instrument Serif"'),
-      document.fonts.load('500 200px "JetBrains Mono"'),
-      document.fonts.load('500 14px "Instrument Sans"'),
+    // never let a slow font request hold the card (or anything behind it) hostage
+    await Promise.race([
+      Promise.all([document.fonts.load('700 200px "Instrument Sans"'), document.fonts.load('500 22px "IBM Plex Mono"')]),
+      new Promise((res) => setTimeout(res, 1500)),
     ]);
   } catch (e) { /* fall back silently */ }
+  const SANS = '"Instrument Sans", sans-serif', MONO = '"IBM Plex Mono", ui-monospace, monospace';
 
-  g.fillStyle = PAL.ink; g.fillRect(0, 0, W, H);
-  const rg = g.createRadialGradient(W * 0.78, H * 0.3, 40, W * 0.78, H * 0.3, 760);
-  rg.addColorStop(0, 'rgba(82,53,66,0.75)'); rg.addColorStop(1, 'rgba(82,53,66,0)');
-  g.fillStyle = rg; g.fillRect(0, 0, W, H);
-  g.drawImage(makeContourTile(1600, H, 0.06, 5), -160, 0);
+  drawPaper(g, W, H, { labels: false });
 
-  // the fault line: one cut across the card, with a Watcher split on it
-  const x0 = 520, y0 = 600, x1 = 1210, y1 = 150, ang = Math.atan2(y1 - y0, x1 - x0);
-  const cx = 905, cy = y0 + (cx - x0) * Math.tan(ang), nx = -Math.sin(ang), ny = Math.cos(ang);
+  // the trace: quiet, then the round, as one pen line across the card
+  const base = 500;
+  g.beginPath();
+  for (let x = 0; x <= W; x += 4) {
+    const k = x / W, env = Math.exp(-Math.pow((k - 0.62) / 0.16, 2));
+    const y = base + (Math.sin(x * 0.11) * 3 + Math.sin(x * 0.37) * 2) + env * (Math.sin(x * 0.19) * 70 + Math.sin(x * 0.53) * 38) * Math.min(1.4, 0.4 + res.score / 400);
+    x ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.strokeStyle = '#161616'; g.lineWidth = 2; g.lineJoin = 'round'; g.stroke();
+
+  // one orb, cut in two, upper right
+  const cx = 985, cy = 235, ang = -0.5, nx = -Math.sin(ang), ny = Math.cos(ang);
   for (const side of [-1, 1]) {
     g.save();
-    g.translate(cx + nx * side * 26 - Math.cos(ang) * side * 10, cy + ny * side * 26);
-    g.rotate(side * 0.14);
-    g.scale(3.1, 3.1);
+    g.translate(cx + nx * side * 22 - Math.cos(ang) * side * 12, cy + ny * side * 22);
+    g.rotate(side * 0.13);
+    g.scale(3.4, 3.4);
     g.beginPath();
     const P = 90, c2 = Math.cos(ang), s2 = Math.sin(ang), ex = -s2 * side, ey = c2 * side;
     g.moveTo(-c2 * P, -s2 * P); g.lineTo(c2 * P, s2 * P); g.lineTo(c2 * P + ex * P, s2 * P + ey * P); g.lineTo(-c2 * P + ex * P, -s2 * P + ey * P);
     g.closePath(); g.clip();
-    TYPES.watcher.draw(g);
+    TYPES.orb.draw(g);
     g.restore();
   }
-  const line = (w, a) => { g.strokeStyle = `rgba(243,231,236,${a})`; g.lineWidth = w; g.lineCap = 'round'; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
-  line(22, 0.06); line(9, 0.14); line(2.5, 0.95);
-  g.beginPath();
-  for (let i = 0; i <= 60; i++) { const k = i / 60, a = (i % 2 ? 1 : -1) * 9 * Math.sin(k * Math.PI); const x = x0 + (x1 - x0) * k + nx * a, y = y0 + (y1 - y0) * k + ny * a; i ? g.lineTo(x, y) : g.moveTo(x, y); }
-  g.strokeStyle = 'rgba(243,231,236,0.4)'; g.lineWidth = 1.2; g.stroke();
+  // the stroke that cut it
+  const x0 = 730, y0 = cy + (730 - cx) * Math.tan(ang), x1 = 1210, y1 = cy + (1210 - cx) * Math.tan(ang);
+  g.strokeStyle = 'rgba(130,90,109,0.35)'; g.lineWidth = 14; g.lineCap = 'round'; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+  g.strokeStyle = '#161616'; g.lineWidth = 4; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+  g.lineCap = 'butt';
 
-  drawRocky(g, 1085, 560, 1.7, POSES.idle(0.8), { cracks: 0 });
-
-  drawCrystal(g, 78, 72, 20, 0, 0);
-  g.fillStyle = PAL.pearl; g.textAlign = 'left';
-  g.font = '400 36px "Instrument Serif", serif';
-  g.fillText('Fault Line', 104, 84);
-  g.fillStyle = 'rgba(252,252,252,0.55)';
-  g.font = '500 13px "Instrument Sans", sans-serif';
-  setSpacing(g, 3);
-  const where = res.mode === 'daily' ? `DAILY · ${res.date}` : res.mode === 'classic' ? 'CLASSIC' : 'ARCADE · 60 S';
-  g.fillText(where, 106, 108);
+  // wordmark
+  g.fillStyle = '#161616'; g.textAlign = 'left';
+  g.font = `700 34px ${SANS}`; setSpacing(g, -0.8);
+  g.fillText('Fault Line', 64, 84);
+  setSpacing(g, 1.5);
+  g.fillStyle = 'rgba(22,22,22,0.6)'; g.font = `500 13px ${MONO}`;
+  const where = res.mode === 'daily' ? `DAILY / ${res.date}` : res.mode === 'classic' ? 'CLASSIC' : 'ARCADE / 60 S';
+  g.fillText(where, 66, 110);
   setSpacing(g, 0);
-  if (res.name) { g.textAlign = 'right'; g.fillStyle = 'rgba(252,252,252,0.75)'; g.font = '500 20px "JetBrains Mono", monospace'; g.fillText(res.name, W - 60, 84); g.textAlign = 'left'; }
+  if (res.name) { g.textAlign = 'right'; g.fillStyle = '#161616'; g.font = `500 20px ${MONO}`; g.fillText(res.name, W - 60, 84); g.textAlign = 'left'; }
 
-  g.fillStyle = PAL.pearl;
-  g.font = '500 190px "JetBrains Mono", monospace';
-  const sStr = String(res.score);
-  g.fillText(sStr, 60, 340);
-  g.fillStyle = '#C29AAF';
-  g.font = 'italic 400 44px "Instrument Serif", serif';
-  g.fillText(`M ${res.m.toFixed(2)} · ${res.tier}`, 70, 404);
+  g.fillStyle = '#161616';
+  g.font = `700 210px ${SANS}`; setSpacing(g, -8);
+  g.fillText(String(res.score), 56, 330);
+  setSpacing(g, 0);
+  g.fillStyle = '#825A6D';
+  g.font = `600 30px ${SANS}`;
+  g.fillText(`Magnitude ${res.m.toFixed(2)} · ${res.tier}`, 66, 384);
 
-  g.fillStyle = 'rgba(252,252,252,0.75)';
-  g.font = '500 22px "JetBrains Mono", monospace';
+  g.fillStyle = 'rgba(22,22,22,0.75)';
+  g.font = `500 20px ${MONO}`;
   const bits = [`${res.sliced} shattered`];
   if (res.maxCombo) bits.push(`aftershock x${res.maxCombo}`);
-  if (res.bossHits) bits.push(`Auditor x${res.bossHits}`);
-  g.fillText(bits.join('  ·  '), 70, 456);
+  if (res.bossHits) bits.push(`core x${res.bossHits}`);
+  g.fillText(bits.join('  /  '), 66, 424);
 
-  g.fillStyle = 'rgba(252,252,252,0.45)';
-  g.font = '500 15px "JetBrains Mono", monospace';
-  g.fillText(url, 66, H - 40);
+  g.fillStyle = 'rgba(22,22,22,0.5)';
+  g.font = `500 15px ${MONO}`;
+  g.fillText(url, 66, H - 36);
   return c;
 }

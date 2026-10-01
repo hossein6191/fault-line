@@ -11,9 +11,9 @@ const VERSION = 1;
 // are kept for each: count (times fired), sum (values added up) and max
 // (largest single value).
 //   slice      one target shattered (value = how many, default 1)
-//   watcher, golem, moth, probe, prism
+//   orb, lens, star, dart, prism
 //              fired next to 'slice' for that kind of target
-//   boss       fired once per Auditor encounter, value = hits landed on it
+//   boss       fired once per Core encounter, value = hits landed on it
 //   combo      fired once per combo, value = targets in that combo
 //   clean      a clean cut (through the core of a target)
 //   power      a power-up was sliced and activated
@@ -21,7 +21,7 @@ const VERSION = 1;
 //   shieldhit  the blade touched a shielded block
 //   miss       a target fell back down unsliced
 export const EVENTS = [
-  'slice', 'watcher', 'golem', 'moth', 'probe', 'prism', 'boss', 'combo',
+  'slice', 'orb', 'lens', 'star', 'dart', 'prism', 'boss', 'combo',
   'clean', 'power', 'quake', 'shieldhit', 'miss',
 ];
 
@@ -34,10 +34,10 @@ export const RANK_TITLES = ['Micro', 'Minor', 'Light', 'Moderate', 'Strong', 'Ma
 
 // Blade trails unlock at whole levels. 'pearl' is the default and always on.
 export const BLADES = [
-  { id: 'pearl', name: 'Pearl', level: 1 },
+  { id: 'pearl', name: 'Ink', level: 1 },
   { id: 'mauve', name: 'Mauve', level: 3 },
-  { id: 'ember', name: 'Ember', level: 5 },
-  { id: 'glass', name: 'Glass', level: 7 },
+  { id: 'ember', name: 'Copper', level: 5 },
+  { id: 'glass', name: 'Graphite', level: 7 },
   { id: 'enclave', name: 'Enclave', level: 9 },
 ];
 
@@ -87,15 +87,15 @@ const LANES = [
   // Lane 0: targets.
   [
     T('slice-40', 'Slice 40 targets in one round', 10, 40, 'run', runSum('slice')),
-    T('watchers-8', 'Shatter 8 Watchers in one round', 10, 8, 'run', runSum('watcher')),
+    T('orbs-8', 'Shatter 8 Orbs in one round', 10, 8, 'run', runSum('orb')),
     T('slice-60', 'Slice 60 targets in one round', 15, 60, 'run', runSum('slice')),
-    T('moths-10', 'Slice 10 Moths in one round', 15, 10, 'run', runSum('moth')),
-    T('golems-6', 'Crack 6 Glass Golems in one round', 20, 6, 'run', runSum('golem')),
+    T('stars-10', 'Cut 10 Stars in one round', 15, 10, 'run', runSum('star')),
+    T('lenses-6', 'Split 6 Lenses in one round', 20, 6, 'run', runSum('lens')),
     T('life-slice-1000', 'Slice 1,000 targets (lifetime)', 30, 1000, 'life', lifeSum('slice')),
-    T('probes-8', 'Cut down 8 Probes in one round', 25, 8, 'run', runSum('probe')),
+    T('darts-8', 'Cut down 8 Darts in one round', 25, 8, 'run', runSum('dart')),
     T('slice-90', 'Slice 90 targets in one round', 30, 90, 'run', runSum('slice')),
     T('prisms-3', 'Split 3 prisms in one round', 30, 3, 'run', runSum('prism')),
-    T('life-watchers-300', 'Shatter 300 Watchers (lifetime)', 45, 300, 'life', lifeSum('watcher')),
+    T('life-orbs-300', 'Shatter 300 Orbs (lifetime)', 45, 300, 'life', lifeSum('orb')),
     T('slice-120', 'Slice 120 targets in one round', 45, 120, 'run', runSum('slice')),
     T('life-slice-5000', 'Slice 5,000 targets (lifetime)', 60, 5000, 'life', lifeSum('slice')),
   ],
@@ -108,7 +108,7 @@ const LANES = [
     T('combo-5', 'Land a 5 combo', 25, 5, 'run', runMax('combo')),
     T('power-3', 'Activate 3 power-ups in one round', 20, 3, 'run', runCount('power')),
     T('clean-8', 'Make 8 clean cuts in one round', 30, 8, 'run', runCount('clean')),
-    T('boss-20', 'Land 20 hits on the Auditor', 30, 20, 'run', runSum('boss')),
+    T('boss-20', 'Land 20 hits on the Core', 30, 20, 'run', runSum('boss')),
     T('life-combos-100', 'Make 100 combos (lifetime)', 35, 100, 'life', lifeCount('combo')),
     T('combo-7', 'Land a 7 combo', 45, 7, 'run', runMax('combo')),
     T('life-quakes-10', 'Trigger 10 Quakes (lifetime)', 45, 10, 'life', lifeCount('quake')),
@@ -237,7 +237,7 @@ export class Missions {
   runTick({ score } = {}) {
     const r = this.run;
     if (!r.live || r.ended) return;
-    r.score = Math.max(r.score, num(score));
+    r.score = Math.max(0, num(score));   // live value: a cut block can take points away
   }
 
   track(event, value = 1) {
@@ -258,7 +258,7 @@ export class Missions {
       return { completed: [], points: 0, rankBefore: before, rankAfter: before, newUnlocks: [] };
     }
     if (MODES.includes(mode)) r.mode = mode;
-    r.score = Math.max(r.score, num(score));
+    r.score = Math.max(0, num(score, r.score));   // the final score is the one that counts
     r.duration = Math.max(0, num(duration));
     // The game's own totals win over the events if the integrator tracked
     // fewer slices or never reported the biggest combo.
@@ -350,8 +350,8 @@ export class Missions {
       shieldHits: l.count.shieldhit, dailyPlayed: l.dailyPlayed, points: this.state.points,
       // Extras beyond the core set, handy for a stats screen.
       bossHits: l.sum.boss, cleanCuts: l.count.clean, misses: l.count.miss,
-      watchers: l.sum.watcher, golems: l.sum.golem, moths: l.sum.moth,
-      probes: l.sum.probe, prisms: l.sum.prism,
+      orbs: l.sum.orb, lenses: l.sum.lens, stars: l.sum.star,
+      darts: l.sum.dart, prisms: l.sum.prism,
       bestDailyToday: l.dailyDay === today() ? l.dailyDayBest : 0,
       playTime: l.playTime, missions: this.state.done.length,
     };

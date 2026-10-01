@@ -8,7 +8,7 @@ const noop = () => {};
 const { Game, ROUND } = await import('../src/game.js');
 const { TYPES } = await import('../src/targets.js');
 const { Missions } = await import('../src/missions.js');
-const { mulberry32 } = await import('../src/world.js');
+const { mulberry32 } = await import('../src/rng.js');
 const { validateRound } = await import('../api/_lib/util.js');
 
 let failures = 0;
@@ -80,7 +80,8 @@ if (arc && (arc.t < ROUND || arc.t > ROUND + 12)) fail(`arcade round lasted ${ar
 play({ mode: 'arcade', seed: 77, skill: 0.6, label: 'arcade-reckless', avoidBlocks: false });
 const cl = play({ mode: 'classic', seed: 0, skill: 0.015, label: 'classic-weak', maxSeconds: 200, avoidBlocks: false });
 if (cl && cl.out.cracks < 3) fail('classic round ended without three cracks');
-play({ mode: 'classic', seed: 9, skill: 0.92, label: 'classic-strong', maxSeconds: 240, mayOutlast: true });
+const clStrong = play({ mode: 'classic', seed: 9, skill: 0.92, label: 'classic-strong', maxSeconds: 240, mayOutlast: true });
+if (clStrong && clStrong.over) { const r = clStrong.over; const why = validateRound({ mode: 'classic', score: r.score, sliced: r.sliced, combos: r.combos, maxCombo: r.maxCombo, bossHits: 0 }, { t: 0 }, clStrong.t * 1000 + 3000); if (why) fail('honest classic round rejected: ' + why); }
 play({ mode: 'arcade', seed: 5, skill: 0.6, label: 'portrait', viewport: [390, 844] });
 globalThis.innerWidth = 960; globalThis.innerHeight = 540;
 
@@ -92,13 +93,15 @@ if (arc && arc.over) {
   if (why) fail('honest arcade round rejected: ' + why);
   if (!validateRound({ ...body, score: 99999 }, tok, nowMs)) fail('absurd score accepted');
   if (!validateRound(body, tok, 20000)) fail('20 second arcade round accepted');
+  if (!validateRound({ mode: 'classic', score: 300, sliced: 20, combos: 7, maxCombo: 3, bossHits: 0 }, tok, 1000)) fail('instant classic round accepted');
+  if (!validateRound({ mode: 'arcade', score: 20000, sliced: 420, combos: 141, maxCombo: 90, bossHits: 60 }, tok, nowMs)) fail('20,000 point arcade round accepted');
 }
 
 // missions round trip
 try {
   const ms = new Missions();
   ms.runStart('arcade');
-  ms.track('slice', 50); ms.track('watcher', 20); ms.track('combo', 5); ms.track('clean', 9);
+  ms.track('slice', 50); ms.track('orb', 20); ms.track('combo', 5); ms.track('clean', 9);
   const r = ms.runEnd({ score: 180, mode: 'arcade', duration: 64, maxCombo: 5, sliced: 50 });
   if (!r || !Array.isArray(r.completed)) fail('missions.runEnd shape');
   if (ms.list().length !== 3) fail('missions.list() should have 3 entries');
@@ -106,7 +109,7 @@ try {
   if (!ms.unlocks().includes('pearl') || ms.getBlade() !== 'pearl') fail('default blade');
 } catch (e) { fail(`missions threw ${e.stack}`); }
 
-for (const k of ['watcher', 'golem', 'prism', 'probe', 'moth', 'block', 'power:overclock', 'power:amp', 'power:stasis', 'power:quake']) if (!seen.has(k)) fail('never spawned: ' + k);
+for (const k of ['orb', 'lens', 'prism', 'dart', 'star', 'block', 'power:overclock', 'power:amp', 'power:stasis', 'power:quake']) if (!seen.has(k)) fail('never spawned: ' + k);
 for (const k of Object.keys(TYPES)) if (!TYPES[k].r) fail('type without radius: ' + k);
 console.log('seen:', [...seen].sort().join(' '));
 console.log('events:', Object.fromEntries([...events].sort()));

@@ -16,7 +16,7 @@ export function renderBoard(data, pid, boardName) {
   const label = boardName === 'daily' ? `Today · ${data.date}` : boardName === 'classic' ? 'Classic · all time' : 'Arcade · all time';
   if (!data.entries.length) { status.textContent = `${label} · no rounds posted yet. Be the first.`; return; }
   status.textContent = `${label} · ${data.total} player${data.total === 1 ? '' : 's'}`;
-  list.innerHTML = data.entries.map((e) => `<li class="${e.you ? 'you' : ''}"><span class="r">#${e.rank}</span><span class="n">${esc(e.name || 'Rocky')}</span><span class="m">${num(e.score)}</span><span class="d">x${num(e.maxCombo)} · ${num(e.sliced)} cut</span></li>`).join('');
+  list.innerHTML = data.entries.map((e) => `<li class="${e.you ? 'you' : ''}"><span class="r">#${e.rank}</span><span class="n">${esc(e.name || 'Player')}</span><span class="m">${num(e.score)}</span><span class="d">x${num(e.maxCombo)} · ${num(e.sliced)} cut</span></li>`).join('');
   if (data.you) you.textContent = `You: ${fmtRank(data.you.rank, data.total)} · ${num(data.you.score)}`;
   else if (pid) you.textContent = 'You have not posted a round on this board yet.';
 }
@@ -66,7 +66,7 @@ export function renderOver(res, best, missionRes) {
   $('o-eyebrow').textContent = where;
   $('o-score').textContent = num(res.score);
   $('o-tier').textContent = `M ${res.m.toFixed(2)} · ${res.tier}`;
-  $('o-line').textContent = res.mode === 'classic' ? 'Three cracks. The glass got through.' : res.bossHits ? `The Auditor took ${res.bossHits} cuts before it broke.` : '';
+  $('o-line').textContent = res.mode === 'classic' ? 'Three cracks. The glass got through.' : res.bossHits ? `The Core took ${res.bossHits} cuts before it broke.` : '';
   $('o-sliced').textContent = num(res.sliced);
   $('o-combo').textContent = res.maxCombo ? 'x' + res.maxCombo : '—';
   $('o-clean').textContent = num(res.cleans);

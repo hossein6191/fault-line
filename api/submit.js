@@ -4,7 +4,7 @@
 // game can share an Upstash database with Magnitude Run.
 //   fl:lb:arcade | fl:lb:classic | fl:lb:daily:<date>   sorted sets, member pid
 //   fl:pb:<board>:<pid>                                 JSON details for the listing
-import { send, preflight, readJson, redis, rateLimit, clientIp, verifyToken, validateRound, cleanName, cleanPid, compositeScore, utcDate, dailySeed } from './_lib/util.js';
+import { send, preflight, readJson, redis, rateLimit, clientIp, verifyToken, validateRound, cleanName, cleanPid, compositeScore, utcDate, dailySeed, TOKEN_TTL_MS } from './_lib/util.js';
 
 const BOARD_MAX = 5000;
 const DETAIL_TTL = 180 * 86400;
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
   if (!pid) return send(res, 400, { error: 'bad player id' });
 
   // a token is single-use
-  const used = await r.set(`fl:tok:${payload.n}`, 1, { nx: true, ex: 3600 });
+  const used = await r.set(`fl:tok:${payload.n}`, 1, { nx: true, ex: Math.ceil(TOKEN_TTL_MS / 1000) + 60 });
   if (used !== 'OK') return send(res, 409, { error: 'token used' });
 
   const name = cleanName(body.name);
@@ -54,8 +54,11 @@ export default async function handler(req, res) {
       if (over.length) { await r.zrem(boardKey, ...over); await r.del(...over.map((id) => `fl:pb:${board}:${id}`)); }
     }
   } else {
+    // keep the listing alive for as long as the player keeps playing, and let them rename
     const cur = await r.get(detailKey);
-    if (cur) { const obj = typeof cur === 'string' ? JSON.parse(cur) : cur; if (obj.name !== name) { obj.name = name; await r.set(detailKey, JSON.stringify(obj), { keepTtl: true }); } }
+    const obj = cur ? (typeof cur === 'string' ? JSON.parse(cur) : cur) : { score: Math.floor(Number(prev) / 1000), sliced: Number(prev) % 1000, maxCombo: 0, bossHits: 0, date };
+    obj.name = name;
+    await r.set(detailKey, JSON.stringify(obj), { ex: ttl });
   }
   const rank = await r.zrevrank(boardKey, pid);
   const total = await r.zcard(boardKey);

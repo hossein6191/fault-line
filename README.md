@@ -1,8 +1,12 @@
 # Fault Line
 
-A glass-slicing arcade game for the Seismic community. Your swipe is the fault
-line: the Watchers toss glass into the air, you shatter it, and you never cut
-what is shielded. Plays on phones (portrait or landscape) and on desktop.
+A glass-slicing arcade game for the Seismic community. The screen is a
+seismogram and your swipe is the fault line drawn on it: glass is tossed across
+the chart, you shatter it, and you never cut what is shielded. Plays on phones
+(portrait or landscape) and on desktop.
+
+It is its own game: its own look (chart paper, ink, stained glass), its own
+objects, its own sound and score. Nothing is shared with Magnitude Run.
 
 Fan-made. Not an official Seismic product. No wallet, no account.
 
@@ -11,13 +15,14 @@ Fan-made. Not an official Seismic product. No wallet, no account.
 ## Play
 
 - **Swipe** (touch, or hold the left mouse button) through anything made of
-  glass: Watchers, Glass Golems, Prisms, Probes, Moths. Two fingers work.
+  glass: Orbs, Lenses, Prisms, Darts, and Stars (worth two). Two fingers work.
 - **Three or more in one swipe** is an aftershock and pays its size again.
   Aftershocks in quick succession build the **blitz**: every third one raises
   the tier, and each aftershock then pays tier × 5 on top. Three seconds
   without one and the chain drops.
 - A cut close to the centre of a target is a **clean cut**, worth one more.
-- **Shielded blocks** (solid mauve cubes with a padlock) must not be cut.
+- **Shielded blocks** (solid ink squares with a padlock, like a redaction
+  bar) must not be cut.
   In Arcade it costs 10 points, clears the screen and cancels your blitz and
   powers. In Classic it costs a crack.
 - **Hexagons** are powers, cut them to trigger: Overclock (glass pours in
@@ -29,9 +34,9 @@ Fan-made. Not an official Seismic product. No wallet, no account.
 
 | mode | rules |
 | --- | --- |
-| Arcade | 60 seconds, no penalty for a miss. At zero the Auditor rises: cut it as many times as you can. Up to three end-of-round bonuses. |
+| Arcade | 60 seconds, no penalty for a miss. At zero the Core rises: cut it as many times as you can. Up to three end-of-round bonuses. |
 | Classic | No clock. A missed target or a cut block is a crack; three cracks end it. Every 100 points repairs one. |
-| Daily | Arcade on one course for everyone, seeded by the server each UTC day, with its own board. |
+| Daily | Arcade on one course for everyone, seeded by the server each UTC day, with its own board. Every wave is drawn from the seed and the wave number alone, so how you play cannot change what comes next. |
 
 Missions (three at a time, 36 in all) raise a rank from Magnitude 1.0 to 9.0
 and unlock blade colours.
@@ -82,14 +87,14 @@ in the browser, so a determined cheat can still post a believable score.
 
 | file | what |
 | --- | --- |
-| `src/game.js` | loop, wave spawner, physics, cutting, combos and blitz, powers, the Auditor, HUD |
+| `src/game.js` | loop, wave spawner, physics, cutting, combos and blitz, powers, the Core, HUD |
 | `src/targets.js` | every tossed object, drawn once and cached as a sprite |
-| `src/blade.js` | the trail: a tapered ribbon with a seismograph line riding it; segment tests |
+| `src/blade.js` | the stroke: a tapered ribbon of ink with a seismograph line riding it; segment tests |
+| `src/paper.js` | the chart: ruled paper and live pen traces that react to shakes and quakes |
 | `src/input.js` | Pointer Events, raw and coalesced samples, two blades |
-| `src/audio.js`, `src/music.js` | this game's own sound: struck-glass bells, skin and wood drums, a plucked line in A Hirajoshi; the drum kit grows with the blitz |
+| `src/audio.js`, `src/music.js` | struck-glass bells, skin and wood drums, a plucked line in A Hirajoshi; the drum kit grows with the blitz |
 | `src/missions.js` | missions, rank, blade unlocks |
 | `src/card.js` | 1200×630 share card |
-| `src/rocky.js`, `src/world.js` | Rocky and the city, shared with Magnitude Run |
 | `api/` | Vercel functions |
 
 Notes from the research that shaped it: one point per target and combo = size
@@ -100,6 +105,6 @@ samples taken from every pointer event rather than once per frame.
 
 ## Brand
 
-Palette and type follow the Seismic Brand Kit v2 (Mauve `#825A6D`, Purple
-`#523542`, greys to `#161616`), with Instrument Sans, Instrument Serif and
-JetBrains Mono standing in for the licensed Suisse faces.
+Colours come from the Seismic Brand Kit v2 (Mauve `#825A6D`, Purple `#523542`,
+ink `#161616` on a paper white), set in Instrument Sans with IBM Plex Mono for
+the chart annotations.

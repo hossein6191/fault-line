@@ -1,5 +1,5 @@
-// Renders the icon to PNG without any image library: polygon scanline fill
-// with 4x4 supersampling and a hand-rolled PNG encoder. Geometry mirrors icon.svg.
+// Renders the icon to PNG without any image library: shape tests with 4x4
+// supersampling and a hand-rolled PNG encoder. Geometry mirrors icon.svg.
 //   node tools/make-icons.mjs
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
@@ -7,44 +7,41 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-const BG = hex('#161616');
-const P = (pts, dx = 0, dy = 0) => pts.map(([x, y]) => [(x + dx - 256) / 256, (y + dy - 256) / 256]);
-const SHAPES = [
-  [P([[256, 84], [352, 190], [345, 246], [172, 312], [160, 190]], -14, -12), hex('#825A6D')],
-  [P([[256, 84], [160, 190], [240, 218]], -14, -12), hex('#A17A8F')],
-  [P([[160, 190], [240, 218], [228, 290], [172, 312]], -14, -12), hex('#6A475A')],
-  [P([[172, 312], [345, 246], [325, 428], [192, 428]], 14, 14), hex('#523542')],
-  [P([[172, 312], [228, 290], [214, 428], [192, 428]], 14, 14), hex('#6A475A')],
-  [P([[92, 352], [96, 340], [430, 206], [422, 224]]), [243, 231, 236, 0.22]],
-  [P([[96, 346], [426, 212], [424, 218]]), [252, 252, 252, 1]],
-];
+const PAPER = [245, 241, 242], INK = [22, 22, 22], PLUM = [61, 39, 49], LIGHT = [194, 154, 175], MAUVE = [130, 90, 109], GRID = [222, 210, 215];
 
-function inside(poly, x, y) {
-  let c = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, yi] = poly[i], [xj, yj] = poly[j];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+// the fault: the line through (118,318) and (394,198); the orb is a circle around its midpoint
+const ax = 118, ay = 318, bx = 394, by = 198, cx = 256, cy = 258, R = 150;
+const side = (x, y) => (bx - ax) * (y - ay) - (by - ay) * (x - ax);   // > 0 below the line
+function sample(x, y) {
+  // stroke
+  const blade = [[52, 352], [58, 336], [470, 158], [462, 180]];
+  let inside = false;
+  for (let i = 0, j = blade.length - 1; i < blade.length; j = i++) {
+    const [xi, yi] = blade[i], [xj, yj] = blade[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
   }
-  return c;
+  if (inside) return INK;
+  // upper half, slipped up-left; lower half, slipped down-right
+  for (const [dx, dy, upper, fill] of [[12, 14, false, MAUVE], [-12, -12, true, LIGHT]]) {
+    const px = x - dx, py = y - dy, d = Math.hypot(px - cx, py - cy), s = side(px, py);
+    if (d <= R + 5 && (upper ? s <= 0 : s >= 0)) {
+      const edge = Math.abs(s) / Math.hypot(bx - ax, by - ay);
+      return d >= R - 5 || edge <= 5 ? PLUM : fill;
+    }
+  }
+  if (Math.abs((x % 128) - 0) < 1 || Math.abs((y % 128) - 0) < 1) return GRID;
+  return PAPER;
 }
 function render(size, scale) {
-  const px = new Uint8Array(size * size * 3);
-  const cx = size / 2, cy = size / 2, s = (size / 2) * scale;
-  const shapes = SHAPES.map(([poly, col]) => [poly.map(([x, y]) => [cx + x * s, cy + y * s]), col]);
-  const SS = 4;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      let r = 0, g = 0, b = 0;
-      for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
-        const fx = x + (sx + 0.5) / SS, fy = y + (sy + 0.5) / SS;
-        let col = BG;
-        for (const [poly, c] of shapes) if (inside(poly, fx, fy)) { const a = c.length > 3 ? c[3] : 1; col = [col[0] + (c[0] - col[0]) * a, col[1] + (c[1] - col[1]) * a, col[2] + (c[2] - col[2]) * a]; }
-        r += col[0]; g += col[1]; b += col[2];
-      }
-      const i = (y * size + x) * 3;
-      px[i] = r / (SS * SS); px[i + 1] = g / (SS * SS); px[i + 2] = b / (SS * SS);
+  const px = new Uint8Array(size * size * 3), SS = 4, k = 512 / size / scale, off = (512 - 512 / scale) / 2;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let r = 0, g = 0, b = 0;
+    for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
+      const c = sample((x + (sx + 0.5) / SS) * k + off, (y + (sy + 0.5) / SS) * k + off);
+      r += c[0]; g += c[1]; b += c[2];
     }
+    const i = (y * size + x) * 3;
+    px[i] = r / 16; px[i + 1] = g / 16; px[i + 2] = b / 16;
   }
   return px;
 }

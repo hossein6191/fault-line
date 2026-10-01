@@ -1,13 +1,13 @@
-// The blade: a short-lived trail behind each finger. Drawn as a tapered
-// ribbon with a seismograph zigzag riding on it, because the swipe is the
-// fault line.
+// The blade: a short-lived trail behind each finger, drawn as a stroke of
+// ink with a seismograph zigzag riding on it. The swipe is the fault line,
+// and on chart paper a fault line is a pen stroke.
 
 export const BLADE_SKINS = {
-  pearl:   { name: 'Pearl',   core: '252,252,252', glow: '194,154,175' },
-  mauve:   { name: 'Mauve',   core: '243,201,218', glow: '130,90,109' },
-  ember:   { name: 'Ember',   core: '255,228,196', glow: '190,138,91' },
-  glass:   { name: 'Glass',   core: '255,255,255', glow: '252,252,252' },
-  enclave: { name: 'Enclave', core: '214,250,236', glow: '120,210,180' },
+  pearl:   { name: 'Ink',      core: '22,22,22',   glow: '130,90,109' },
+  mauve:   { name: 'Mauve',    core: '82,53,66',   glow: '194,154,175' },
+  ember:   { name: 'Copper',   core: '142,78,42',  glow: '214,158,112' },
+  glass:   { name: 'Graphite', core: '92,92,98',   glow: '170,170,178' },
+  enclave: { name: 'Enclave',  core: '18,92,72',   glow: '110,200,170' },
 };
 
 export const BLADE_LIFE = 0.17;
@@ -64,8 +64,8 @@ export class Blade {
       for (let i = n - 1; i >= 0; i--) ctx.lineTo(p[i].x + (Rr[i][0] - p[i].x) * k, p[i].y + (Rr[i][1] - p[i].y) * k);
       ctx.closePath();
     };
-    ribbon(2.6); ctx.fillStyle = `rgba(${skin.glow},0.22)`; ctx.fill();
-    ribbon(1.5); ctx.fillStyle = `rgba(${skin.glow},0.35)`; ctx.fill();
+    ribbon(2.6); ctx.fillStyle = `rgba(${skin.glow},0.2)`; ctx.fill();
+    ribbon(1.5); ctx.fillStyle = `rgba(${skin.glow},0.4)`; ctx.fill();
     ribbon(1); ctx.fillStyle = `rgba(${skin.core},0.96)`; ctx.fill();
     // the seismograph riding the cut
     ctx.beginPath();
@@ -74,7 +74,7 @@ export class Blade {
       const x = p[i].x + L[i][2] * k, y = p[i].y + L[i][3] * k;
       i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     }
-    ctx.strokeStyle = `rgba(${skin.core},0.5)`; ctx.lineWidth = 1; ctx.lineJoin = 'round'; ctx.stroke();
+    ctx.strokeStyle = `rgba(${skin.core},0.6)`; ctx.lineWidth = 1.1; ctx.lineJoin = 'round'; ctx.stroke();
   }
 }
 

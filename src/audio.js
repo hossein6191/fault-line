@@ -11,7 +11,7 @@ const semi = (n) => Math.pow(2, n / 12);
 
 export class Sfx {
   constructor() {
-    this.ctx = null; this.master = null; this.wet = null; this.noiseBuf = null;
+    this.ctx = null; this.master = null; this.musicBus = null; this.wet = null; this.noiseBuf = null; this.resumedAt = -1e9;
     this.muted = false;
     try { this.muted = localStorage.getItem('fl-muted') === '1'; } catch (e) { /* private mode */ }
   }
@@ -28,6 +28,8 @@ export class Sfx {
       this.master = c.createGain();
       this.master.gain.value = this.muted ? 0 : 0.6;
       this.master.connect(comp);
+      // the score has its own way out, so muting effects leaves the music alone
+      this.musicBus = c.createGain(); this.musicBus.gain.value = 1; this.musicBus.connect(comp);
       // echo: two delay taps feeding each other through a low-pass
       const send = c.createGain(); send.gain.value = 1;
       const d1 = c.createDelay(0.5), d2 = c.createDelay(0.5), lp = c.createBiquadFilter(), fb = c.createGain(), out = c.createGain();
@@ -39,7 +41,7 @@ export class Sfx {
       const d = this.noiseBuf.getChannelData(0);
       for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
     }
-    if (this.ctx.state !== 'running') { try { this.ctx.resume(); } catch (e) { /* ignore */ } }
+    if (this.ctx.state !== 'running') { this.resumedAt = performance.now(); try { this.ctx.resume(); } catch (e) { /* ignore */ } }
     return this.ctx;
   }
   setMuted(m) {
@@ -47,7 +49,12 @@ export class Sfx {
     try { localStorage.setItem('fl-muted', m ? '1' : '0'); } catch (e) { /* ignore */ }
     if (this.master) this.master.gain.value = m ? 0 : 0.6;
   }
-  ready() { return !this.muted && this.ctx && this.ctx.state === 'running' ? this.ctx : null; }
+  // resume() is asynchronous: a cue fired in the same gesture that woke the
+  // context is booked anyway and plays the moment it starts running
+  ready() {
+    if (this.muted || !this.ctx) return null;
+    return this.ctx.state === 'running' || performance.now() - this.resumedAt < 400 ? this.ctx : null;
+  }
 
   // ---- voices ----
   // a decaying oscillator; `echo` sends part of it to the delay line

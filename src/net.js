@@ -31,11 +31,11 @@ function randomId() {
 }
 
 // Same character rules as api/_lib/util.js cleanName. The profanity list stays
-// server-side; the server may still swap a name for 'Rocky'.
+// server-side; the server may still swap a name for 'Player'.
 function cleanName(raw) {
   const s = String(raw || '').normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/[^A-Za-z0-9_ .\-؀-ۿ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 14);
   const visible = s.replace(/[\p{M}\p{Cc}\s]/gu, '');
-  return visible.length < 2 ? 'Rocky' : s;
+  return visible.length < 2 ? 'Player' : s;
 }
 
 function apiBase() {
@@ -87,7 +87,7 @@ export const net = {
     return id;
   },
 
-  // '' until the player picks a name; the server shows 'Rocky' for an empty one.
+  // '' until the player picks a name; the server shows 'Player' for an empty one.
   name() {
     if (mem.name != null) return mem.name;
     const n = read('mr-name');

@@ -4,12 +4,12 @@
 // reaches players on their next load; the bump only clears stale entries.
 // The leaderboard API is never cached: a stale board is worse than no board.
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const PREFIX = 'fault-line-';
 const CACHE = PREFIX + VERSION;
 const PRECACHE = [
   './', './index.html', './styles.css',
-  './src/main.js', './src/game.js', './src/targets.js', './src/blade.js', './src/rocky.js', './src/world.js',
+  './src/main.js', './src/game.js', './src/targets.js', './src/blade.js', './src/paper.js', './src/rng.js',
   './src/audio.js', './src/music.js', './src/card.js', './src/score.js', './src/net.js', './src/missions.js',
   './src/input.js', './src/ui.js', './src/pwa.js',
   './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './icon-180.png',
@@ -65,7 +65,10 @@ async function networkFirst(event, req) {
       fetch(req),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000)),
     ]);
-    if (res && res.ok) event.waitUntil(cache.put(nav ? './index.html' : req, res.clone()).catch(() => {}));
+    if (res && res.ok) {
+      if (nav) event.waitUntil(Promise.all([cache.put('./', res.clone()), cache.put('./index.html', res.clone())]).catch(() => {}));
+      else event.waitUntil(cache.put(req, res.clone()).catch(() => {}));
+    }
     return res;
   } catch (e) {
     return cacheFirst(event, req);

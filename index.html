@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Fault Line</title>
 <meta name="description" content="Your swipe is the fault line. Shatter the glass, never cut what is shielded. A Seismic community build.">
-<meta name="theme-color" content="#161616">
+<meta name="theme-color" content="#F5F1F2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta property="og:title" content="Fault Line">
 <meta property="og:description" content="Your swipe is the fault line. Shatter the glass, never cut what is shielded.">
 <meta property="og:type" content="website">
@@ -17,7 +17,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -26,8 +26,8 @@
 <div class="overlay" id="title">
   <div class="panel">
     <div class="eyebrow">Seismic community build</div>
-    <h1 class="logo">Fault <em>Line</em></h1>
-    <p class="lede">Your swipe is the fault line. Shatter the glass the Watchers send up, and never cut what is shielded.</p>
+    <h1 class="wordmark" aria-label="Fault Line"><span class="sizer" aria-hidden="true">Fault Line</span><span class="top" aria-hidden="true">Fault Line</span><span class="bot" aria-hidden="true">Fault Line</span></h1>
+    <p class="lede">Your swipe is the fault line. Shatter everything made of glass, and never cut what is shielded.</p>
     <div class="modes" role="tablist" aria-label="Mode">
       <button class="mode on" data-mode="arcade" type="button" role="tab" aria-selected="true">Arcade <span>60 s</span></button>
       <button class="mode" data-mode="classic" type="button" role="tab" aria-selected="false">Classic</button>
@@ -65,14 +65,14 @@
       <div><dt>Clean cuts</dt><dd id="o-clean">0</dd></div>
       <div><dt>Best</dt><dd id="o-best">0</dd></div>
       <div><dt>Aftershocks</dt><dd id="o-combos">0</dd></div>
-      <div><dt>Auditor</dt><dd id="o-boss">—</dd></div>
+      <div><dt>Core</dt><dd id="o-boss">—</dd></div>
       <div><dt>Shield hits</dt><dd id="o-shield">0</dd></div>
       <div><dt>Rank</dt><dd id="o-rank">—</dd></div>
     </dl>
     <div id="o-missions" class="done-list"></div>
     <div id="o-name" class="name-row hidden">
       <label for="name-input">Name for the leaderboard</label>
-      <input id="name-input" maxlength="14" autocomplete="nickname" placeholder="Rocky">
+      <input id="name-input" maxlength="14" autocomplete="nickname" placeholder="Your name">
       <button class="ghost small" id="btn-name" type="button">Post score</button>
     </div>
     <div class="card"><img id="o-card" alt="Share card for this round"></div>
@@ -90,7 +90,7 @@
 <div class="overlay center hidden" id="pause">
   <div class="panel">
     <div class="eyebrow">Paused</div>
-    <h2 class="logo small">Take a breath</h2>
+    <h2 class="title">Take a breath</h2>
     <div class="row">
       <button id="btn-resume" class="primary" type="button">Resume</button>
       <button id="btn-restart" class="ghost" type="button">Restart</button>
@@ -108,7 +108,7 @@
     <div id="board-you" class="you"></div>
     <div class="name-row">
       <label for="board-name">Your name</label>
-      <input id="board-name" maxlength="14" autocomplete="nickname" placeholder="Rocky">
+      <input id="board-name" maxlength="14" autocomplete="nickname" placeholder="Your name">
       <button class="ghost small" id="btn-board-name" type="button">Save</button>
     </div>
   </div>

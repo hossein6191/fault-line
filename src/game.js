@@ -1,12 +1,12 @@
-// Fault Line — core loop. The swipe is the fault line: glass is tossed up
-// from below and shatters when the blade crosses it; shielded blocks must not
-// be cut. Logical playfield: landscape 600 tall, portrait 440 wide.
+// Fault Line — core loop. The screen is a seismogram and the swipe is the
+// fault line drawn on it: glass is tossed up from below and shatters when the
+// stroke crosses it; redaction blocks are shielded and must not be cut. Logical playfield: landscape 600 tall, portrait 440 wide.
 //
-// Modes: arcade (60 s, then the Auditor), daily (arcade on a shared seed),
+// Modes: arcade (60 s, then the Core), daily (arcade on a shared seed),
 // classic (three cracks: a missed target or a cut block is a crack).
 
-import { Background, mulberry32 } from './world.js';
-import { Rocky } from './rocky.js';
+import { Paper } from './paper.js';
+import { mulberry32 } from './rng.js';
 import { Sfx } from './audio.js';
 import { Music } from './music.js';
 import { TYPES, BASE_TYPES, POWERS, buildSprites, spriteKey, drawBoss } from './targets.js';
@@ -35,10 +35,9 @@ export class Game {
     this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) || canvas.getContext('2d');
     this.hooks = hooks;
     this.sfx = new Sfx();
-    this.music = new Music(() => this.sfx.ctx, () => this.sfx.master);
+    this.music = new Music(() => this.sfx.ctx, () => this.sfx.musicBus);
     this.music.start();
-    this.bg = new Background();
-    this.rk = new Rocky();
+    this.bg = new Paper();
     this.settings = { shake: true };
     this.skin = 'pearl';
     this.state = 'title';
@@ -52,14 +51,15 @@ export class Game {
     this.resize();
     this.reset();
     window.addEventListener('resize', () => this.resize());
-    if (window.visualViewport) window.visualViewport.addEventListener('resize', () => this.resize());
     window.addEventListener('orientationchange', () => { setTimeout(() => this.resize(), 120); setTimeout(() => this.resize(), 500); });
     requestAnimationFrame((ts) => this.loop(ts));
   }
 
   resize() {
-    const vv = window.visualViewport;
-    const vw = (vv && vv.width) || window.innerWidth || 960, vh = (vv && vv.height) || window.innerHeight || 540;
+    // the layout viewport: the soft keyboard must not re-lay out the playfield
+    const de = document.documentElement || {};
+    const vw = de.clientWidth || window.innerWidth || 960, vh = de.clientHeight || window.innerHeight || 540;
+    const oW = this.W, oH = this.H, wasPortrait = this.portrait;
     // cap the backing store near 2.1 MP so mid-range phones hold 60 fps
     const dpr = Math.min(2, window.devicePixelRatio || 1, Math.sqrt(2.1e6 / Math.max(1, vw * vh)));
     this.portrait = vh > vw;
@@ -74,12 +74,21 @@ export class Game {
     const rect = this.canvas.getBoundingClientRect();
     this.ox = rect.left; this.oy = rect.top;
     this.g = GRAVITY * this.H / 600;
-    this.groundY = Math.round(this.H * 0.9);
-    this.bg.resize(this.W, this.H, this.groundY);
-    this.sprites = buildSprites(Math.min(3, dpr * this.scale));
-    this.rk.x = this.portrait ? 46 : 70;
-    this.rk.y = this.groundY;
-    this.rkS = this.portrait ? 0.62 : 0.74;
+    const q = Math.min(3, dpr * this.scale);
+    this.bg.resize(this.W, this.H, q);
+    this.sprites = buildSprites(q);
+    // a rotation or window resize mid-round: carry everything in the air into the new field
+    if (oW && this.targets && (oW !== this.W || oH !== this.H)) {
+      const sx = this.W / oW, sy = this.H / oH;
+      for (const o of this.targets) { o.x *= sx; o.vx *= sx; o.y *= sy; o.vy *= sy; }
+      for (const o of this.pieces) { o.x *= sx; o.vx *= sx; o.y *= sy; o.vy *= sy; }
+      for (const it of this.queue) { it.x0 *= sx; it.xl *= sx; }
+      for (const c of this.crackMarks) { for (const pt of c.pts) { pt[0] *= sx; pt[1] *= sy; } for (const pt of c.br) { pt[0] *= sx; pt[1] *= sy; } }
+      if (this.boss) { this.boss.x = this.W / 2; this.boss.ty = this.H * 0.42; this.boss.y *= sy; }
+      this.parts.length = 0; this.popups.length = 0;
+      this.clearBlades();
+      if (wasPortrait !== this.portrait && this.state === 'playing') this.togglePause();
+    }
   }
   toLogical(cx, cy) { return [(cx - this.ox) / this.scale, (cy - this.oy) / this.scale]; }
 
@@ -93,8 +102,6 @@ export class Game {
     this.boss = null; this.endT = 0; this.finaleT = 0; this.frenzyT = 0; this.powerPlan = []; this.nextPowerAt = 30;
     this.shake = 0; this.flash = 0; this.flashCol = '252,252,252'; this.hitstop = 0; this.bladeLock = 0;
     this.banner = null; this.scorePulse = 0; this.lastTick = 6; this.timeScale = 1; this.tutTries = 0;
-    this.rkVy = 0; this.rkLand = 0;
-    this.rk.reset(); this.rk.x = this.portrait ? 46 : 70; this.rk.y = this.groundY;
   }
 
   start(mode = 'arcade', seed = 0, date = null) {
@@ -102,6 +109,9 @@ export class Game {
     this.timed = mode !== 'classic';
     this.seed = seed >>> 0;
     const s = this.seed || ((Math.random() * 0xffffffff) >>> 0) || 1;
+    // The course: each wave draws from its own stream, keyed by seed and wave
+    // number, so nothing the player does can shift what comes next.
+    this.courseSeed = s; this.waveNo = 0;
     this.rng = mulberry32(s); this.frng = mulberry32((s ^ 0x9e3779b9) >>> 0);
     this.runDate = date || new Date().toISOString().slice(0, 10);
     this.reset();
@@ -129,8 +139,12 @@ export class Game {
     this.blades.set(id, b);
   }
   bladeMove(id, x, y) {
-    const b = this.blades.get(id);
-    if (!b) return;
+    let b = this.blades.get(id);
+    if (!b) {
+      // a finger that went down while paused, or across a restart: give it a blade now
+      if (this.state === 'paused' || this.state === 'over') return;
+      b = new Blade(); this.blades.set(id, b);
+    }
     const t = now(), l = b.last();
     const x0 = l ? l.x : x, y0 = l ? l.y : y;
     if (!b.add(x, y, t)) return;
@@ -170,7 +184,7 @@ export class Game {
   cutSegment(b, x0, y0, x1, y1) {
     const ang = Math.atan2(y1 - y0, x1 - x0);
     const boss = this.boss;
-    // one hit per pass, and the Auditor itself needs a beat between hits
+    // one hit per pass, and the Core itself needs a beat between hits
     if (boss && boss.alive && boss.t > 0.4 && this.rt - b.lastBoss > 0.12 && this.rt - boss.lastHit > 0.07 && segDist(x0, y0, x1, y1, boss.x, boss.y) < boss.r) {
       b.lastBoss = this.rt; boss.lastHit = this.rt;
       this.bossHit(ang, x1, y1);
@@ -199,7 +213,7 @@ export class Game {
     this.frags(o.x, o.y, 9, o.vx, o.vy, ang);
     if (this.mode === 'classic' && this.state === 'playing' && this.score >= this.nextHeal) {
       this.nextHeal += 100;
-      if (this.cracks > 0 && this.phase === 'round') { this.cracks--; this.crackMarks.pop(); this.rk.cracks = this.cracks; this.music.setDanger(this.cracks); this.popup(this.W / 2, this.H * 0.3, 'CRACK REPAIRED', 18, '243,201,218', 1.4); this.sfx.power(); }
+      if (this.cracks > 0 && this.phase === 'round') { this.cracks--; this.crackMarks.pop(); this.music.setDanger(this.cracks); this.popup(this.W / 2, this.H * 0.3, 'CRACK REPAIRED', 18, '82,53,66', 1.4); this.sfx.power(); }
     }
     this.addPart({ kind: 'cut', x: o.x, y: o.y, ang, len: o.r * 1.7, t: 0, life: 0.16 });
     if (clean) { this.addPart({ kind: 'star', x: o.x, y: o.y, t: 0, life: 0.35, size: 20 }); this.popup(o.x, o.y - o.r - 8, `clean +${pts}`, 13); }
@@ -211,7 +225,6 @@ export class Game {
     }
     this.emit('slice', 1); this.emit(o.type, 1); if (clean) this.emit('clean', 1);
     this.vibrate(8);
-    this.rk.gemBoost = Math.max(this.rk.gemBoost, 0.4);
     if (this.phase === 'tutorial' && o.tut) this.tutSliced = (this.tutSliced || 0) + 1;
   }
 
@@ -233,12 +246,11 @@ export class Game {
     this.combos++; this.maxCombo = Math.max(this.maxCombo, n);
     x = clamp(x, 90, this.W - 90); y = clamp(y, 130, this.H - 140);
     this.music.setBlitz(tier);
-    this.popup(x, y, `AFTERSHOCK x${n}`, 20, '243,201,218', 1.1, `+${bonus}`);
-    if (blitz) this.popup(x, y + 42, `${BLITZ[tier].toLowerCase()} +${blitz}`, 13, '194,154,175', 1);
+    this.popup(x, y, `AFTERSHOCK x${n}`, 20, '82,53,66', 1.1, `+${bonus}`);
+    if (blitz) this.popup(x, y + 42, `${BLITZ[tier].toLowerCase()} +${blitz}`, 13, '130,90,109', 1);
     this.sfx.combo(n);
     this.hitstop = Math.max(this.hitstop, n >= 5 ? 0.07 : 0.035);
     this.shake = Math.max(this.shake, n >= 5 ? 8 : 4);
-    this.cheer();
     this.emit('combo', n);
     this.vibrate(18);
   }
@@ -251,18 +263,18 @@ export class Game {
     this.chain = 0; this.lastComboAt = -9; this.music.setBlitz(0);
     this.power.amp = 0; this.power.stasis = 0; this.power.frenzy = 0;
     this.hitstop = 0.11; this.pity = true;
-    this.flash = 0.55; this.flashCol = '130,90,109';
+    this.flash = 0.55; this.flashCol = '22,22,22';
     this.shake = 13;
     this.sfx.clang();
     this.vibrate([30, 30, 60]);
     for (let i = 0; i < 16; i++) {
       const a = Math.random() * 6.28, s = 120 + Math.random() * 380;
-      this.addPart({ kind: 'stone', x: o.x, y: o.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 14, size: 4 + Math.random() * 8, t: 0, life: 0.8 + Math.random() * 0.5, col: ['#A17A8F', '#825A6D', '#523542'][i % 3] });
+      this.addPart({ kind: 'stone', x: o.x, y: o.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 14, size: 4 + Math.random() * 8, t: 0, life: 0.8 + Math.random() * 0.5, col: ['#161616', '#3D2731', '#523542'][i % 3] });
     }
     this.addPart({ kind: 'ring', x: o.x, y: o.y, t: 0, life: 0.5, r0: 20, r1: 220 });
     // the blast throws everything else clear; none of it counts for or against you
     for (const t of this.targets) {
-      if (!t.alive) continue;
+      if (!t.alive || t.type === 'power') continue;
       const dx = t.x - o.x, dy = t.y - o.y, d = Math.hypot(dx, dy) || 1;
       t.blown = true; t.vx += (dx / d) * 520; t.vy += (dy / d) * 520 - 180; t.vr *= 3;
     }
@@ -270,10 +282,8 @@ export class Game {
     else {
       const loss = Math.min(10, this.score);
       this.score -= loss;
-      this.popup(o.x, o.y - 40, `shielded -${loss}`, 16, '194,154,175', 1.2);
+      this.popup(o.x, o.y - 40, `shielded -${loss}`, 16, '22,22,22', 1.2);
     }
-    this.blockHints = Math.max(this.blockHints, 0);
-    this.rk.flash = 1;
     this.emit('shieldhit', 1);
   }
 
@@ -302,10 +312,9 @@ export class Game {
       sx += t.x; sy += t.y; n++;
       this.slice(t, null, Math.random() * Math.PI, t.r);
     }
-    this.shake = 16; this.flash = 0.5; this.flashCol = '243,231,236';
+    this.shake = 16; this.flash = 0.5; this.flashCol = '130,90,109';
     this.sfx.quake();
     this.bg.pulse(this.W / 2);
-    this.rk.setState('stomp'); this.rk.setState('land'); this.rkLand = 0.35;
     this.vibrate([40, 40, 80]);
     if (n >= 3) this.awardCombo(n, sx / n, sy / n);
     this.emit('quake', 1);
@@ -329,14 +338,13 @@ export class Game {
     b.alive = false;
     const bonus = 10 * mult;
     this.score += bonus; this.scorePulse = 1;
-    for (let i = 0; i < 5; i++) this.frags(b.x + (Math.random() - 0.5) * 90, b.y + (Math.random() - 0.5) * 90, 9, 0, -80);
+    for (let i = 0; i < 5; i++) this.frags(b.x + (Math.random() - 0.5) * 100, b.y + (Math.random() - 0.5) * 100, 10, 0, -80);
     this.addPart({ kind: 'ring', x: b.x, y: b.y, t: 0, life: 0.7, r0: 40, r1: 420 });
-    this.popup(b.x, b.y, `AUDITOR x${b.hits}`, 24, '243,201,218', 1.6, `+${b.hits * mult + bonus}`);
-    this.shake = 18; this.flash = 0.7; this.flashCol = '243,231,236';
+    this.popup(b.x, b.y, `CORE x${b.hits}`, 24, '82,53,66', 1.6, `+${b.hits * mult + bonus}`);
+    this.shake = 18; this.flash = 0.7; this.flashCol = '130,90,109';
     this.sfx.bossBreak();
     this.bg.pulse(b.x);
     this.vibrate([60, 40, 120]);
-    this.cheer();
     this.emit('boss', b.hits);
     this.boss = null;
     this.phase = 'ending'; this.endT = 1.5;
@@ -345,7 +353,6 @@ export class Game {
   // ---------- classic cracks ----------
   addCrack(x, why) {
     this.cracks++;
-    this.rk.cracks = this.cracks; this.rk.flash = 1; this.rk.crackGlow = 1;
     const H = this.H, pts = [[x, H]];
     let cx = x, cy = H;
     for (let i = 0; i < 6; i++) { cx += (Math.random() - 0.5) * 46; cy -= 26 + Math.random() * 30; pts.push([cx, cy]); }
@@ -354,11 +361,11 @@ export class Game {
     this.music.setDanger(this.cracks);
     this.shake = Math.max(this.shake, 7);
     this.pity = true;
-    if (why === 'miss') { this.sfx.miss(); this.popup(clamp(x, 50, this.W - 50), H - 70, 'missed', 14, '194,154,175', 1); this.vibrate(40); }
+    if (why === 'miss') { this.sfx.miss(); this.popup(clamp(x, 50, this.W - 50), H - 70, 'missed', 14, '82,53,66', 1); this.vibrate(40); }
     if (this.cracks >= 3) {
       this.phase = 'ending'; this.endT = 1.4; this.timeScale = 0.35;
       this.clearBlades();
-      this.flash = 0.6; this.flashCol = '243,231,236';
+      this.flash = 0.6; this.flashCol = '22,22,22';
       this.sfx.bossBreak();
       this.music.duck(1.2);
     }
@@ -369,20 +376,20 @@ export class Game {
     return this.timed ? clamp(1 - this.timeLeft / ROUND, 0, 1) : Math.min(1, this.sliced / 160);
   }
   pickType(r, k) {
-    const w = [['watcher', 5], ['golem', 3], ['prism', 3], ['probe', k > 0.15 ? 2 : 0], ['moth', k > 0.3 ? 1.4 : 0]];
+    const w = [['orb', 5], ['lens', 3], ['prism', 3], ['dart', k > 0.15 ? 2 : 0], ['star', k > 0.3 ? 1.4 : 0]];
     let total = 0;
     for (const [, x] of w) total += x;
     let v = r() * total;
     for (const [n, x] of w) { v -= x; if (v <= 0) return n; }
-    return 'watcher';
+    return 'orb';
   }
-  // First run only. Beat 1: one slow Watcher, re-tossed until it is cut.
+  // First run only. Beat 1: one slow Orb, re-tossed until it is cut.
   // Beat 2: three in a row, to show that one swipe through all of them pays more.
   tutorialToss() {
     const W = this.W;
     this.tutSliced = 0; this.tutLive = true;
-    if (this.tutStage === 0) this.queue.push({ at: this.wt + 0.5, type: 'watcher', x0: W * 0.5, xl: W * 0.5 + 10, apex: 0.62, tut: true });
-    else for (const k of [-1, 0, 1]) this.queue.push({ at: this.wt + 0.6, type: 'watcher', x0: W * 0.5 + k * 30, xl: W * 0.5 + k * Math.min(120, W * 0.24), apex: 0.6, tut: true });
+    if (this.tutStage === 0) this.queue.push({ at: this.wt + 0.5, type: 'orb', x0: W * 0.5, xl: W * 0.5 + 10, apex: 0.62, tut: true });
+    else for (const k of [-1, 0, 1]) this.queue.push({ at: this.wt + 0.6, type: 'orb', x0: W * 0.5 + k * 30, xl: W * 0.5 + k * Math.min(120, W * 0.24), apex: 0.6, tut: true });
     this.tutTries++;
   }
   tutorialStep() {
@@ -394,13 +401,16 @@ export class Game {
       this.tutStage = 1; this.tutTries = 0; this.tutorialToss(); return;
     }
     if (this.tutSliced < 3 && this.tutTries < 2) { this.tutorialToss(); return; }
-    this.phase = 'round'; this.nextWave = this.wt + 0.8;
+    // the lesson is not part of the round: start the clock and the count from zero
+    this.phase = 'round'; this.wt = 0; this.nextWave = 0.8; this.waveNo = 0;
+    this.score = 0; this.sliced = 0; this.cleans = 0; this.combos = 0; this.maxCombo = 0; this.chain = 0; this.lastComboAt = -9;
+    for (const b of this.blades.values()) { b.count = 0; b.cx = 0; b.cy = 0; }
     this.needTutorial = false;
     this.hooks.onTutorial && this.hooks.onTutorial();
   }
 
   spawnWave() {
-    const r = this.rng, W = this.W, k = this.intensity();
+    const r = mulberry32((this.courseSeed + Math.imul(++this.waveNo, 0x9E3779B1)) >>> 0), W = this.W, k = this.intensity();
     const early = this.wt < 6;
     const kinds = [['single', early ? 3 : k < 0.2 ? 2 : 0.6], ['pair', 3 - k * 1.5], ['fan', early ? 0 : 1.2 + 3 * k], ['stream', early || k < 0.12 ? 0 : 2], ['burst', k > 0.4 ? 2.5 * k : 0], ['cross', k > 0.3 ? 1 : 0]];
     let total = 0;
@@ -435,6 +445,9 @@ export class Game {
       items.push({ type: T(), x0: W * 0.92, xl: W * 0.1, apex: a });
       items.push({ type: T(), x0: W * 0.5, xl: W * 0.5 + (r() - 0.5) * 60, apex: a + 0.1 });
     }
+    for (const it of items) it.ph = r() * 6.28;   // a Star's wobble is part of the course, not decoration
+    // drawn now, before anything player-dependent, so they are the same for everyone
+    const planned = items.length, plannedDelay = items.reduce((m, it) => Math.max(m, it.delay || 0), 0), px0 = r(), pxl = r();
     // Shielded blocks, kept fair: none in the opening seconds or the last four,
     // none during Overclock, none right after a crack, never more than two in the
     // air, and launched clear of the glass they travel with.
@@ -444,12 +457,17 @@ export class Game {
     if (allow && r() < lerp(0.1, this.timed ? 0.22 : 0.26, k)) {
       const count = k > 0.6 && blocksUp === 0 && r() < 0.25 ? 2 : 1;
       for (let c = 0; c < count; c++) {
-        let x0 = W * 0.5;
-        for (let tries = 0; tries < 6; tries++) {
-          x0 = W * (0.14 + 0.72 * r());
-          if (items.every((it) => (it.delay || 0) > 0.3 || Math.abs(it.x0 - x0) > 80)) break;
+        // A block needs a lane of its own among whatever leaves the ground near
+        // its moment. If the wave has no free lane, it follows the wave alone.
+        let bd = 0.25 + r() * 0.2;
+        const xl = r(), ap = r();
+        let x0 = W * (0.14 + 0.72 * r()), clear = false;
+        for (let tries = 0; tries < 6 && !clear; tries++) {
+          clear = items.every((it) => Math.abs((it.delay || 0) - bd) > 0.45 || Math.abs(it.x0 - x0) > 80);
+          if (!clear) x0 = W * (0.14 + 0.72 * r());
         }
-        items.push({ type: 'block', x0, xl: clamp(x0 + W * (r() - 0.5) * 0.3, 50, W - 50), apex: 0.5 + 0.2 * r(), delay: 0.25 + r() * 0.2 });
+        if (!clear) bd = plannedDelay + 0.6;
+        items.push({ type: 'block', x0, xl: clamp(x0 + W * (xl - 0.5) * 0.3, 50, W - 50), apex: 0.5 + 0.2 * ap, delay: bd });
       }
     }
     if (this.pity) { this.pity = false; if (items.length > 1) items.pop(); }
@@ -459,28 +477,27 @@ export class Game {
     if (this.timed) {
       if (this.powerPlan.length && this.wt >= this.powerPlan[0].at && this.timeLeft > 6) {
         const p = this.powerPlan.shift();
-        items.push({ type: 'power', kind: p.kind, x0: W * (0.3 + 0.4 * r()), xl: W * (0.3 + 0.4 * r()), apex: 0.74, delay: 0.2 });
+        items.push({ type: 'power', kind: p.kind, x0: W * (0.3 + 0.4 * px0), xl: W * (0.3 + 0.4 * pxl), apex: 0.74, delay: 0.2 });
       }
     } else if (this.sliced >= this.nextPowerAt) {
       this.nextPowerAt = this.sliced + 70 + Math.floor(r() * 40);
-      items.push({ type: 'power', kind: 'quake', x0: W * (0.3 + 0.4 * r()), xl: W * (0.3 + 0.4 * r()), apex: 0.74, delay: 0.2 });
+      items.push({ type: 'power', kind: 'quake', x0: W * (0.3 + 0.4 * px0), xl: W * (0.3 + 0.4 * pxl), apex: 0.74, delay: 0.2 });
     }
-    let maxDelay = 0;
-    for (const it of items) { maxDelay = Math.max(maxDelay, it.delay || 0); this.queue.push({ ...it, at: this.wt + (it.delay || 0) }); }
-    let gap = lerp(1.45, 0.9, k) + items.length * 0.05 + maxDelay;
+    for (const it of items) this.queue.push({ ...it, at: this.wt + (it.delay || 0) });
+    // the next wave is timed from what was planned, not from what survived the caps
+    let gap = lerp(1.45, 0.9, k) + planned * 0.05 + plannedDelay;
     if (this.timed && this.timeLeft < 9) gap *= 0.8;
     this.nextWave = this.wt + gap;
     this.sfx.toss();
   }
 
   launch(it) {
-    const r = this.rng, T = TYPES[it.type], H = this.H, rad = T.r;
+    const r = Math.random, T = TYPES[it.type], H = this.H, rad = T.r;
     const y0 = H + rad + 12, h = it.apex * H + rad + 12;
     const vy = -Math.sqrt(2 * this.g * h), time = (2 * -vy) / this.g;
-    const o = { type: it.type, kind: it.kind, x: it.x0, y: y0, vx: (it.xl - it.x0) / time, vy, rot: r() * 6.28, vr: (r() - 0.5) * 5, r: rad, t: 0, ph: r() * 6.28, alive: true, entered: false, tut: it.tut };
+    const o = { type: it.type, kind: it.kind, x: it.x0, y: y0, vx: (it.xl - it.x0) / time, vy, rot: r() * 6.28, vr: (r() - 0.5) * 5, r: rad, t: 0, ph: it.ph || 0, alive: true, entered: false, tut: it.tut };
     if (it.type === 'block') { o.rot = (r() - 0.5) * 0.5; o.vr = (r() - 0.5) * 1.4; }
     else if (it.type === 'power') { o.rot = 0; o.vr = (r() - 0.5) * 0.8; }
-    else if (it.type === 'watcher') o.vr = (r() - 0.5) * 2.4;
     this.targets.push(o);
   }
   sideLaunch() {
@@ -512,8 +529,7 @@ export class Game {
       this.pieces.push({ key, r: o.r, x: o.x, y: o.y, vx: o.vx * 0.6 + nx * side * 120 + Math.cos(ang) * 40, vy: o.vy * 0.6 + ny * side * 120 - 40, rot: o.rot, vr: o.vr + side * (2 + Math.random() * 3), ca, side, t: 0, life: 0.85 });
     }
   }
-  popup(x, y, text, size = 14, col = '243,231,236', life = 0.9, sub = '') { this.popups.push({ x, y, text, size, col, t: 0, life, sub }); }
-  cheer() { if (this.rk.y >= this.groundY - 0.5 && this.rkLand <= 0) this.rkVy = -430; }
+  popup(x, y, text, size = 14, col = '22,22,22', life = 0.9, sub = '') { this.popups.push({ x, y, text, size, col, t: 0, life, sub }); }
   emit(name, value) { if (this.state === 'playing' && this.hooks.onEvent) this.hooks.onEvent(name, value); }
   vibrate(p) { if (this.hooks.onVibrate) this.hooks.onVibrate(p); }
 
@@ -562,15 +578,13 @@ export class Game {
     }
     for (const b of this.fading) b.trim(t);
     this.fading = this.fading.filter((b) => b.pts.length > 1);
-    this.updateRocky(dt);
     this.shake = Math.max(0, this.shake - dt * 26);
     this.flash = Math.max(0, this.flash - dt * 2.4);
     this.scorePulse = Math.max(0, this.scorePulse - dt * 5);
     this.bladeLock = Math.max(0, this.bladeLock - dt);
     if (this.banner) { this.banner.t -= dt; if (this.banner.t <= 0) this.banner = null; }
     this.bg.quake = Math.min(1, this.shake / 14);
-    this.bg.info = { m: magnitudeFor(this.score) };
-    this.bg.update(dt, 14);
+    this.bg.update(dt);
     if (this.hitstop > 0) { this.hitstop -= dt; this.updateFx(dt * 0.2); return; }
 
     if (this.state === 'title') {
@@ -635,7 +649,7 @@ export class Game {
     this.phase = 'boss';
     for (const o of this.targets) o.blown = true;
     this.boss = { x: this.W / 2, y: this.H + 120, ty: this.H * 0.42, r: TYPES.boss.r, hits: 0, t: 0, ph: 0, punch: 0, cracks: [], alive: true, lastHit: -9 };
-    this.banner = { t: BOSS_TIME, title: 'THE AUDITOR', sub: 'cut it as many times as you can' };
+    this.banner = { t: BOSS_TIME, title: 'THE CORE', sub: 'cut it as many times as you can' };
     this.sfx.rise();
     this.music.duck(0.8);
   }
@@ -646,7 +660,7 @@ export class Game {
       if (!o.alive) continue;
       o.t += dt; o.vy += g * dt;
       o.x += o.vx * dt; o.y += o.vy * dt; o.rot += o.vr * dt;
-      if (o.type === 'moth' && !o.blown) o.x += Math.sin(o.t * 7 + o.ph) * 50 * dt;
+      if (o.type === 'star' && !o.blown) o.x += Math.sin(o.t * 7 + o.ph) * 50 * dt;
       if (!o.entered && o.y < H - o.r * 0.3) o.entered = true;
       const gone = (o.y > H + o.r + 40 && o.vy > 0) || o.x < -220 || o.x > W + 220;
       if (!gone) continue;
@@ -678,21 +692,6 @@ export class Game {
     for (const c of this.crackMarks) c.t += dt;
   }
 
-  updateRocky(dt) {
-    const rk = this.rk, G = this.groundY;
-    if (rk.y < G || this.rkVy < 0) { this.rkVy += 1500 * dt; rk.y += this.rkVy * dt; }
-    if (rk.y >= G) {
-      if (this.rkVy > 0) { rk.setState('land'); this.rkLand = 0.2; }
-      rk.y = G; this.rkVy = 0;
-    }
-    rk.grounded = rk.y >= G;
-    if (!rk.grounded) rk.setState(this.rkVy < 0 ? 'jump' : 'fall');
-    else if (this.rkLand > 0) this.rkLand -= dt;
-    else rk.setState('idle');
-    rk.vy = this.rkVy;
-    rk.update(dt, 0, this.rt);
-  }
-
   // ---------- draw ----------
   draw() {
     const ctx = this.ctx, W = this.W, H = this.H, q = this.dpr * this.scale;
@@ -700,23 +699,19 @@ export class Game {
     ctx.save();
     if (this.shake > 0 && this.settings.shake) ctx.translate((Math.random() - 0.5) * this.shake * 1.6, (Math.random() - 0.5) * this.shake * 1.6);
     this.bg.draw(ctx);
-    ctx.fillStyle = this.bg.groundColor(); ctx.fillRect(0, this.groundY, W, H - this.groundY);
-    this.bg.drawFront(ctx, []);
-    ctx.fillStyle = 'rgba(10,7,9,0.3)'; ctx.fillRect(0, 0, W, H);
-    this.rk.draw(ctx, this.rkS, this.rt);
-    if (this.power.stasis > 0) { ctx.fillStyle = 'rgba(194,154,175,0.07)'; ctx.fillRect(0, 0, W, H); }
+    if (this.power.stasis > 0) { ctx.fillStyle = 'rgba(130,90,109,0.1)'; ctx.fillRect(0, 0, W, H); }
+    this.drawCracks(ctx);
     this.drawPieces(ctx);
+    this.drawParts(ctx);
     this.drawTargets(ctx);
     if (this.boss) this.drawBossLayer(ctx);
-    this.drawParts(ctx);
     const skin = BLADE_SKINS[this.skin] || BLADE_SKINS.pearl, t = now();
     if (this.bladeLock <= 0) for (const b of this.blades.values()) b.draw(ctx, t, skin);
     for (const b of this.fading) b.draw(ctx, t, skin);
     this.drawPopups(ctx);
-    this.drawCracks(ctx);
     ctx.restore();
-    if (this.flash > 0) { ctx.fillStyle = `rgba(${this.flashCol},${this.flash * 0.6})`; ctx.fillRect(0, 0, W, H); }
-    if (this.power.amp > 0) this.edgeGlow(ctx, '243,201,218', 0.16 + 0.05 * Math.sin(this.rt * 8));
+    if (this.flash > 0) { ctx.fillStyle = `rgba(${this.flashCol},${this.flash * 0.35})`; ctx.fillRect(0, 0, W, H); }
+    if (this.power.amp > 0) this.edgeGlow(ctx, '130,90,109', 0.22 + 0.06 * Math.sin(this.rt * 8));
     if (this.state !== 'title') this.drawHUD(ctx);
     if (this.phase === 'tutorial' && this.state === 'playing') this.drawTutorial(ctx);
   }
@@ -734,28 +729,29 @@ export class Game {
       if (!sp) continue;
       ctx.save();
       ctx.translate(o.x, o.y);
-      if (o.blown) ctx.globalAlpha = 0.55;
+      if (o.blown) ctx.globalAlpha = 0.5;
       if (o.type === 'power') {
         ctx.save(); ctx.rotate(this.rt * 1.4);
-        ctx.strokeStyle = 'rgba(243,201,218,0.75)'; ctx.lineWidth = 1.4; ctx.setLineDash([5, 6]);
+        ctx.strokeStyle = 'rgba(130,90,109,0.85)'; ctx.lineWidth = 1.6; ctx.setLineDash([5, 6]);
         ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
         ctx.restore();
       }
       ctx.rotate(o.rot);
       ctx.drawImage(sp.c, -sp.pad, -sp.pad, sp.pad * 2, sp.pad * 2);
       ctx.restore();
-      if (o.type === 'block' && this.blockHints > 0 && !o.blown && this.state === 'playing') this.label(ctx, o.x, o.y + o.r + 20, "SHIELDED · DON'T CUT");
+      if (o.type === 'block' && this.blockHints > 0 && !o.blown && this.state === 'playing') this.label(ctx, o.x, o.y + o.r + 22, "SHIELDED · DON'T CUT");
     }
   }
+  // a chart annotation: white slip, ink rule, mono capitals
   label(ctx, x, y, text) {
     ctx.save();
-    ctx.font = '600 11px "Instrument Sans", sans-serif'; ctx.textAlign = 'center';
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '1.6px';
-    const w = ctx.measureText(text).width + 16;
+    ctx.font = '500 11px "IBM Plex Mono", ui-monospace, monospace'; ctx.textAlign = 'center';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '1px';
+    const w = ctx.measureText(text).width + 18;
     x = clamp(x, w / 2 + 6, this.W - w / 2 - 6);
-    ctx.fillStyle = 'rgba(22,16,20,0.82)'; ctx.fillRect(x - w / 2, y - 13, w, 19);
-    ctx.strokeStyle = 'rgba(194,154,175,0.8)'; ctx.lineWidth = 1; ctx.strokeRect(x - w / 2 + 0.5, y - 12.5, w - 1, 18);
-    ctx.fillStyle = '#F3E7EC'; ctx.fillText(text, x + 0.8, y);
+    ctx.fillStyle = 'rgba(255,255,255,0.94)'; ctx.fillRect(x - w / 2, y - 14, w, 21);
+    ctx.strokeStyle = '#161616'; ctx.lineWidth = 1; ctx.strokeRect(x - w / 2 + 0.5, y - 13.5, w - 1, 20);
+    ctx.fillStyle = '#161616'; ctx.fillText(text, x + 0.5, y + 1);
     if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
     ctx.restore();
   }
@@ -766,27 +762,27 @@ export class Game {
       const k = 1 - p.t / p.life, c = Math.cos(p.ca), s = Math.sin(p.ca), P = sp.pad * 1.5, nx = -s * p.side, ny = c * p.side;
       ctx.save();
       ctx.translate(p.x, p.y); ctx.rotate(p.rot);
-      ctx.globalAlpha = Math.min(0.72, k * 1.6);
+      ctx.globalAlpha = Math.min(0.75, k * 1.6);
       ctx.beginPath();
       ctx.moveTo(-c * P, -s * P); ctx.lineTo(c * P, s * P); ctx.lineTo(c * P + nx * P, s * P + ny * P); ctx.lineTo(-c * P + nx * P, -s * P + ny * P);
       ctx.closePath(); ctx.clip();
       ctx.drawImage(sp.c, -sp.pad, -sp.pad, sp.pad * 2, sp.pad * 2);
-      ctx.strokeStyle = 'rgba(252,252,252,0.9)'; ctx.lineWidth = 1.6;
+      ctx.strokeStyle = '#3D2731'; ctx.lineWidth = 1.8;
       ctx.beginPath(); ctx.moveTo(-c * p.r, -s * p.r); ctx.lineTo(c * p.r, s * p.r); ctx.stroke();
       ctx.restore();
     }
   }
   drawBossLayer(ctx) {
     const b = this.boss;
-    let lx = 0, ly = 0.3;
-    for (const bl of this.blades.values()) { const l = bl.last(); if (l) { lx = l.x - b.x; ly = l.y - b.y; } }
-    drawBoss(ctx, b, lx, ly);
+    drawBoss(ctx, b);
     const left = clamp(1 - (b.t - 0.4) / BOSS_TIME, 0, 1);
-    ctx.strokeStyle = 'rgba(243,201,218,0.9)'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(b.x, b.y, 98, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); ctx.stroke();
+    ctx.strokeStyle = 'rgba(22,22,22,0.12)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(b.x, b.y, 98, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#825A6D'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(b.x, b.y, 98, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); ctx.stroke(); ctx.lineCap = 'butt';
     if (b.hits) {
-      ctx.fillStyle = '#FCFCFC'; ctx.textAlign = 'center';
-      ctx.font = `500 ${30 + b.punch * 8}px "JetBrains Mono", monospace`;
+      ctx.fillStyle = '#161616'; ctx.textAlign = 'center';
+      ctx.font = `500 ${30 + b.punch * 8}px "IBM Plex Mono", ui-monospace, monospace`;
       ctx.fillText('x' + b.hits, b.x, b.y - 118);
     }
   }
@@ -794,30 +790,30 @@ export class Game {
     for (const p of this.parts) {
       const k = 1 - p.t / p.life;
       if (p.kind === 'spark') {
-        ctx.fillStyle = `rgba(243,231,236,${k})`;
+        ctx.fillStyle = `rgba(61,39,49,${k * 0.8})`;
         ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
       } else if (p.kind === 'glass' || p.kind === 'stone') {
         ctx.save();
         ctx.translate(p.x, p.y); ctx.rotate(p.rot);
         ctx.globalAlpha = Math.min(1, k * 1.7);
         ctx.beginPath(); ctx.moveTo(0, -p.size); ctx.lineTo(p.size * 0.8, p.size * 0.5); ctx.lineTo(-p.size * 0.7, p.size * 0.6); ctx.closePath();
-        if (p.kind === 'glass') { ctx.fillStyle = 'rgba(252,252,252,0.2)'; ctx.fill(); ctx.strokeStyle = 'rgba(252,252,252,0.85)'; ctx.lineWidth = 1; ctx.stroke(); }
-        else { ctx.fillStyle = p.col; ctx.fill(); ctx.strokeStyle = '#150D11'; ctx.lineWidth = 1; ctx.stroke(); }
+        if (p.kind === 'glass') { ctx.fillStyle = 'rgba(130,90,109,0.4)'; ctx.fill(); ctx.strokeStyle = 'rgba(61,39,49,0.85)'; ctx.lineWidth = 1; ctx.stroke(); }
+        else { ctx.fillStyle = p.col; ctx.fill(); }
         ctx.restore();
       } else if (p.kind === 'cut') {
         const c = Math.cos(p.ang), s = Math.sin(p.ang), L = p.len * (0.6 + 0.6 * (1 - k));
-        ctx.strokeStyle = `rgba(252,252,252,${k})`; ctx.lineWidth = 1 + 3 * k; ctx.lineCap = 'round';
+        ctx.strokeStyle = `rgba(22,22,22,${k})`; ctx.lineWidth = 1 + 3 * k; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(p.x - c * L, p.y - s * L); ctx.lineTo(p.x + c * L, p.y + s * L); ctx.stroke();
         ctx.lineCap = 'butt';
       } else if (p.kind === 'ring') {
         const r = lerp(p.r0, p.r1, 1 - k * k);
-        ctx.strokeStyle = `rgba(243,231,236,${k * 0.8})`; ctx.lineWidth = 1 + 4 * k;
+        ctx.strokeStyle = `rgba(82,53,66,${k * 0.7})`; ctx.lineWidth = 1 + 4 * k;
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
       } else if (p.kind === 'star') {
         const s = p.size * (0.5 + (1 - k) * 0.9);
-        ctx.fillStyle = `rgba(252,252,252,${k})`;
+        ctx.fillStyle = `rgba(255,255,255,${k})`; ctx.strokeStyle = `rgba(61,39,49,${k})`; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(p.x, p.y - s); ctx.lineTo(p.x + s * 0.2, p.y - s * 0.2); ctx.lineTo(p.x + s, p.y); ctx.lineTo(p.x + s * 0.2, p.y + s * 0.2);
-        ctx.lineTo(p.x, p.y + s); ctx.lineTo(p.x - s * 0.2, p.y + s * 0.2); ctx.lineTo(p.x - s, p.y); ctx.lineTo(p.x - s * 0.2, p.y - s * 0.2); ctx.closePath(); ctx.fill();
+        ctx.lineTo(p.x, p.y + s); ctx.lineTo(p.x - s * 0.2, p.y + s * 0.2); ctx.lineTo(p.x - s, p.y); ctx.lineTo(p.x - s * 0.2, p.y - s * 0.2); ctx.closePath(); ctx.fill(); ctx.stroke();
       }
     }
   }
@@ -829,121 +825,122 @@ export class Game {
       ctx.translate(p.x, p.y); ctx.scale(pop, pop);
       ctx.globalAlpha = Math.min(1, (1 - age) * 2.2);
       ctx.textAlign = 'center';
-      ctx.font = big ? `600 ${p.size}px "Instrument Sans", sans-serif` : `600 ${p.size}px "JetBrains Mono", monospace`;
-      if (big && 'letterSpacing' in ctx) ctx.letterSpacing = '3px';
-      ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(14,10,12,0.8)';
+      ctx.font = big ? `700 ${p.size}px "Instrument Sans", sans-serif` : `500 ${p.size}px "IBM Plex Mono", ui-monospace, monospace`;
+      if (big && 'letterSpacing' in ctx) ctx.letterSpacing = '2.5px';
+      ctx.lineWidth = 5; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(247,244,245,0.95)';
       ctx.strokeText(p.text, 0, 0);
       ctx.fillStyle = `rgb(${p.col})`; ctx.fillText(p.text, 0, 0);
       if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
       if (p.sub) {
-        ctx.font = `500 ${Math.round(p.size * 0.8)}px "JetBrains Mono", monospace`;
-        ctx.strokeText(p.sub, 0, p.size * 1.15); ctx.fillStyle = '#FCFCFC'; ctx.fillText(p.sub, 0, p.size * 1.15);
+        ctx.font = `500 ${Math.round(p.size * 0.8)}px "IBM Plex Mono", ui-monospace, monospace`;
+        ctx.strokeText(p.sub, 0, p.size * 1.15); ctx.fillStyle = '#161616'; ctx.fillText(p.sub, 0, p.size * 1.15);
       }
       ctx.restore();
     }
   }
+  // Classic: each crack is a tear running up the paper from where it happened
   drawCracks(ctx) {
     if (!this.crackMarks.length) return;
     ctx.lineJoin = 'miter';
     for (const c of this.crackMarks) {
       const grow = Math.min(1, c.t * 6), n = Math.max(2, Math.ceil(c.pts.length * grow));
-      const line = (pts, w, a) => {
+      const line = (pts, w, col) => {
         ctx.beginPath();
         for (let i = 0; i < Math.min(n, pts.length); i++) (i ? ctx.lineTo(pts[i][0], pts[i][1]) : ctx.moveTo(pts[i][0], pts[i][1]));
-        ctx.strokeStyle = `rgba(243,231,236,${a})`; ctx.lineWidth = w; ctx.stroke();
+        ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke();
       };
-      line(c.pts, 5, 0.12); line(c.pts, 1.6, 0.85);
-      if (grow >= 1) line(c.br, 1.2, 0.7);
+      line(c.pts, 7, 'rgba(130,90,109,0.18)'); line(c.pts, 2, '#161616');
+      if (grow >= 1) line(c.br, 1.4, 'rgba(22,22,22,0.8)');
     }
   }
   drawTutorial(ctx) {
     const W = this.W, H = this.H, k = (this.rt * 0.9) % 1;
     this.label(ctx, W / 2, H * 0.2, this.tutStage === 0 ? 'SWIPE THROUGH THE GLASS' : 'ONE SWIPE THROUGH ALL THREE');
     const x0 = W * 0.28, x1 = W * 0.72, y = H * 0.5, x = lerp(x0, x1, Math.min(1, k * 1.4));
-    ctx.strokeStyle = `rgba(243,231,236,${0.55 * (1 - k)})`; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(22,22,22,${0.5 * (1 - k)})`; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.setLineDash([2, 9]);
     ctx.beginPath(); ctx.moveTo(x0, y + 30); ctx.lineTo(x, lerp(y + 30, y - 30, (x - x0) / (x1 - x0))); ctx.stroke();
-    ctx.lineCap = 'butt';
+    ctx.setLineDash([]); ctx.lineCap = 'butt';
   }
 
   drawHUD(ctx) {
-    const W = this.W;
+    const W = this.W, MONO = '"IBM Plex Mono", ui-monospace, monospace', SANS = '"Instrument Sans", sans-serif';
     const spacing = (px) => { if ('letterSpacing' in ctx) ctx.letterSpacing = px + 'px'; };
     ctx.save();
-    const top = ctx.createLinearGradient(0, 0, 0, 120);
-    top.addColorStop(0, 'rgba(14,10,12,0.6)'); top.addColorStop(1, 'rgba(14,10,12,0)');
-    ctx.fillStyle = top; ctx.fillRect(0, 0, W, 120);
+    const top = ctx.createLinearGradient(0, 0, 0, 130);
+    top.addColorStop(0, 'rgba(247,244,245,0.9)'); top.addColorStop(1, 'rgba(247,244,245,0)');
+    ctx.fillStyle = top; ctx.fillRect(0, 0, W, 130);
     ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(252,252,252,0.6)'; ctx.font = '500 11px "Instrument Sans", sans-serif';
-    spacing(2.2);
-    ctx.fillText(this.mode === 'daily' ? 'SCORE · DAILY' : this.mode === 'classic' ? 'SCORE · CLASSIC' : 'SCORE', 20, 30);
+    ctx.fillStyle = 'rgba(22,22,22,0.6)'; ctx.font = `500 10px ${MONO}`;
+    spacing(1.6);
+    ctx.fillText(this.mode === 'daily' ? 'SCORE / DAILY' : this.mode === 'classic' ? 'SCORE / CLASSIC' : 'SCORE', 20, 30);
     spacing(0);
-    ctx.fillStyle = '#FCFCFC';
-    ctx.font = `500 ${44 + this.scorePulse * 6}px "JetBrains Mono", monospace`;
-    ctx.fillText(String(this.score), 18, 72);
-    ctx.fillStyle = this.score > this.best && this.best > 0 ? '#F3C9DA' : 'rgba(252,252,252,0.5)';
-    ctx.font = '500 12px "JetBrains Mono", monospace';
-    ctx.fillText(this.score > this.best && this.best > 0 ? 'new best' : `best ${this.best}`, 20, 92);
+    ctx.fillStyle = '#161616';
+    ctx.font = `700 ${46 + this.scorePulse * 6}px ${SANS}`;
+    spacing(-1.5);
+    ctx.fillText(String(this.score), 18, 74);
+    spacing(0);
+    const beat = this.score > this.best && this.best > 0;
+    ctx.fillStyle = beat ? '#825A6D' : 'rgba(22,22,22,0.5)';
+    ctx.font = `500 11px ${MONO}`;
+    ctx.fillText(beat ? 'new best' : `best ${this.best}`, 20, 93);
     // blitz: the chain of combos, with the time left to keep it alive
     const tier = Math.min(6, Math.floor(this.chain / 3));
     if (this.chain > 0 && this.phase === 'round') {
       const left = clamp(1 - (this.rt - this.lastComboAt) / BLITZ_WINDOW, 0, 1);
-      ctx.fillStyle = tier ? '#F3C9DA' : 'rgba(252,252,252,0.6)'; ctx.font = '600 11px "Instrument Sans", sans-serif';
-      spacing(1.8);
+      ctx.fillStyle = tier ? '#523542' : 'rgba(22,22,22,0.6)'; ctx.font = `600 10px ${MONO}`;
+      spacing(1.2);
       ctx.fillText(tier ? `${BLITZ[tier].toUpperCase()} +${tier * 5}` : `CHAIN ${this.chain}/3`, 20, 114);
       spacing(0);
-      ctx.fillStyle = 'rgba(252,252,252,0.16)'; ctx.fillRect(20, 120, 96, 3);
-      ctx.fillStyle = tier ? '#F3C9DA' : 'rgba(252,252,252,0.6)'; ctx.fillRect(20, 120, 96 * left, 3);
+      ctx.fillStyle = 'rgba(22,22,22,0.12)'; ctx.fillRect(20, 120, 96, 3);
+      ctx.fillStyle = tier ? '#825A6D' : 'rgba(22,22,22,0.55)'; ctx.fillRect(20, 120, 96 * left, 3);
     }
 
     ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(22,22,22,0.6)'; ctx.font = `500 10px ${MONO}`;
+    spacing(1.6); ctx.fillText(this.timed ? 'TIME' : 'CRACKS', W - 20, 30); spacing(0);
     if (this.timed) {
       const sec = Math.max(0, Math.ceil(this.timeLeft)), low = sec <= 10 && this.phase === 'round';
-      ctx.fillStyle = this.power.stasis > 0 ? '#C29AAF' : low ? '#F3C9DA' : '#FCFCFC';
-      ctx.font = `500 ${low ? 36 : 32}px "JetBrains Mono", monospace`;
-      ctx.fillText(`${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`, W - 18, 62);
-      ctx.fillStyle = 'rgba(252,252,252,0.6)'; ctx.font = '500 11px "Instrument Sans", sans-serif';
-      spacing(2.2); ctx.fillText('TIME', W - 20, 30); spacing(0);
+      ctx.fillStyle = this.power.stasis > 0 ? '#825A6D' : low ? '#825A6D' : '#161616';
+      ctx.font = `600 ${low ? 36 : 32}px ${SANS}`;
+      ctx.fillText(`${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`, W - 18, 64);
     } else {
-      ctx.fillStyle = 'rgba(252,252,252,0.6)'; ctx.font = '500 11px "Instrument Sans", sans-serif';
-      spacing(2.2); ctx.fillText('CRACKS', W - 20, 30); spacing(0);
       for (let i = 0; i < 3; i++) {
-        const cx = W - 32 - i * 26, cy = 52, hit = this.cracks > 2 - i;
-        ctx.beginPath(); ctx.moveTo(cx, cy - 11); ctx.lineTo(cx + 9, cy - 3); ctx.lineTo(cx + 6, cy + 11); ctx.lineTo(cx - 6, cy + 11); ctx.lineTo(cx - 9, cy - 3); ctx.closePath();
-        if (hit) { ctx.strokeStyle = 'rgba(252,252,252,0.3)'; ctx.lineWidth = 1.4; ctx.stroke(); }
-        else { ctx.fillStyle = 'rgba(243,231,236,0.92)'; ctx.fill(); }
+        const cx = W - 30 - i * 26, hit = this.cracks > 2 - i;
+        ctx.beginPath(); ctx.arc(cx, 52, 9, 0, Math.PI * 2);
+        if (hit) { ctx.strokeStyle = 'rgba(22,22,22,0.3)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx - 5, 47); ctx.lineTo(cx + 1, 52); ctx.lineTo(cx - 2, 57); ctx.strokeStyle = 'rgba(22,22,22,0.5)'; ctx.stroke(); }
+        else { ctx.fillStyle = '#825A6D'; ctx.fill(); ctx.strokeStyle = '#3D2731'; ctx.lineWidth = 1.5; ctx.stroke(); }
       }
     }
     // active power-ups
     let py = this.H - 22;
-    ctx.textAlign = 'right';
     for (const [k, name] of [['frenzy', 'overclock'], ['amp', 'amp'], ['stasis', 'stasis']]) {
       if (this.power[k] <= 0) continue;
       const P = POWERS[name], frac = this.power[k] / P.dur;
-      ctx.fillStyle = 'rgba(252,252,252,0.85)'; ctx.font = '500 11px "JetBrains Mono", monospace';
-      ctx.fillText(P.name, W - 20, py);
-      ctx.fillStyle = 'rgba(252,252,252,0.18)'; ctx.fillRect(W - 130, py + 5, 110, 3);
-      ctx.fillStyle = '#C29AAF'; ctx.fillRect(W - 20 - 110 * frac, py + 5, 110 * frac, 3);
+      ctx.fillStyle = '#161616'; ctx.font = `500 11px ${MONO}`;
+      ctx.fillText(P.name.toUpperCase(), W - 20, py);
+      ctx.fillStyle = 'rgba(22,22,22,0.14)'; ctx.fillRect(W - 130, py + 5, 110, 3);
+      ctx.fillStyle = '#825A6D'; ctx.fillRect(W - 20 - 110 * frac, py + 5, 110 * frac, 3);
       py -= 24;
     }
     if (this.bladeLock > 0) {
-      ctx.textAlign = 'center'; ctx.fillStyle = `rgba(243,201,218,${Math.min(1, this.bladeLock * 3)})`;
-      ctx.font = '600 13px "Instrument Sans", sans-serif'; spacing(4);
+      ctx.textAlign = 'center'; ctx.fillStyle = `rgba(22,22,22,${Math.min(1, this.bladeLock * 3)})`;
+      ctx.font = `700 14px ${SANS}`; spacing(5);
       ctx.fillText('SHIELDED', W / 2, this.H * 0.5); spacing(0);
     }
     if (this.banner) {
-      const a = Math.min(1, this.banner.t * 2.5), y = this.portrait ? 130 : 96;
+      const a = Math.min(1, this.banner.t * 2.5), y = this.portrait ? 132 : 98;
       ctx.textAlign = 'center';
-      ctx.fillStyle = `rgba(252,252,252,${a})`;
-      ctx.font = '600 14px "Instrument Sans", sans-serif';
+      ctx.font = `700 15px ${SANS}`;
       spacing(5);
       const bw = ctx.measureText(this.banner.title).width / 2 + 18;
+      ctx.fillStyle = `rgba(22,22,22,${a})`;
       ctx.fillText(this.banner.title, W / 2 + 2.5, y);
       spacing(0);
-      ctx.strokeStyle = `rgba(194,154,175,${a * 0.8})`; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(W / 2 - bw - 36, y - 4.5); ctx.lineTo(W / 2 - bw, y - 4.5); ctx.moveTo(W / 2 + bw, y - 4.5); ctx.lineTo(W / 2 + bw + 36, y - 4.5); ctx.stroke();
-      ctx.fillStyle = `rgba(194,154,175,${a})`;
-      ctx.font = 'italic 400 20px "Instrument Serif", serif';
-      ctx.fillText(this.banner.sub, W / 2, y + 26);
+      ctx.strokeStyle = `rgba(22,22,22,${a * 0.7})`; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(W / 2 - bw - 36, y - 5.5); ctx.lineTo(W / 2 - bw, y - 5.5); ctx.moveTo(W / 2 + bw, y - 5.5); ctx.lineTo(W / 2 + bw + 36, y - 5.5); ctx.stroke();
+      ctx.fillStyle = `rgba(82,53,66,${a})`;
+      ctx.font = `500 12px ${MONO}`;
+      ctx.fillText(this.banner.sub, W / 2, y + 22);
     }
     ctx.restore();
   }

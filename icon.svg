@@ -1,17 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <title>Fault Line</title>
-  <rect width="512" height="512" fill="#161616"/>
-  <!-- the crystal, cut in two along the fault and slipped apart -->
-  <g transform="translate(-14,-12)">
-    <polygon points="256,84 352,190 345,246 172,312 160,190" fill="#825A6D"/>
-    <polygon points="256,84 160,190 240,218" fill="#A17A8F"/>
-    <polygon points="160,190 240,218 228,290 172,312" fill="#6A475A"/>
+  <rect width="512" height="512" fill="#F5F1F2"/>
+  <g stroke="#825A6D" stroke-opacity="0.18" stroke-width="2">
+    <path d="M0 128H512M0 256H512M0 384H512M128 0V512M256 0V512M384 0V512"/>
   </g>
-  <g transform="translate(14,14)">
-    <polygon points="172,312 345,246 325,428 192,428" fill="#523542"/>
-    <polygon points="172,312 228,290 214,428 192,428" fill="#6A475A"/>
+  <!-- an orb, cut in two along the fault and slipped apart -->
+  <g transform="translate(-12,-12)">
+    <path d="M118 318 A150 150 0 0 1 394 198 Z" fill="#C29AAF" stroke="#3D2731" stroke-width="10" stroke-linejoin="round"/>
   </g>
-  <!-- the blade -->
-  <polygon points="92,352 96,340 430,206 422,224" fill="#F3E7EC" fill-opacity="0.22"/>
-  <polygon points="96,346 426,212 424,218" fill="#FCFCFC"/>
+  <g transform="translate(12,14)">
+    <path d="M118 318 A150 150 0 0 0 394 198 Z" fill="#825A6D" stroke="#3D2731" stroke-width="10" stroke-linejoin="round"/>
+  </g>
+  <!-- the stroke -->
+  <polygon points="52,352 58,336 470,158 462,180" fill="#161616"/>
 </svg>

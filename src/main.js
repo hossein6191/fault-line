@@ -13,7 +13,7 @@ const read = (k, d) => { try { const v = localStorage.getItem(k); return v == nu
 const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } };
 
 const MODE_TEXT = {
-  arcade: 'Sixty seconds. Cut everything made of glass, then face the Auditor.',
+  arcade: 'Sixty seconds. Cut everything made of glass, then break the Core.',
   classic: 'No clock. A missed target or a cut block is a crack. Three cracks ends it.',
   daily: 'Today’s course, the same for everyone. One shared board.',
 };
@@ -21,10 +21,10 @@ const MODE_TEXT = {
 // ---- state ----
 let calm = false;
 try { calm = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { /* ignore */ }
-const settings = Object.assign({ sound: true, music: true, shake: !calm, vibrate: true }, read('fl-settings', {}));
+const settings = Object.assign({ sound: true, music: true, shake: !calm, vibrate: true, mute: false }, read('fl-settings', {}));
 let mode = 'arcade';
 const best = Object.assign({ arcade: 0, classic: 0, daily: 0, dailyDate: '' }, read('fl-best', {}));
-let lastCard = null, lastRes = null, pendingStart = null, submitted = null, overAt = 0, starting = false;
+let lastCard = null, lastRes = null, lastStart = null, pendingStart = null, submitted = null, overAt = 0, starting = false, runNo = 0;
 const missions = new Missions();
 
 const game = new Game(canvas, {
@@ -40,15 +40,16 @@ if (params.has('debug')) window.__fl = game;   // console access while developin
 const input = new Input(game, {
   gesture: () => game.sfx.ensure(),
   pause: () => { if (game.state === 'playing' || game.state === 'paused') game.togglePause(); else closePanels(); },
-  mute: () => { settings.sound = !settings.sound; applySettings(); },
+  mute: () => { settings.mute = !settings.mute; applySettings(); },
   restart: () => { if (game.state === 'title' || game.state === 'over') startRun(); },
 });
 // iOS only counts some events as a user gesture, and can suspend audio again later
-for (const t of ['pointerup', 'touchend', 'click', 'keydown']) window.addEventListener(t, () => { if (!document.hidden) game.sfx.ensure(); }, true);
+for (const t of ['pointerup', 'touchend', 'click', 'keydown']) window.addEventListener(t, () => { if (!document.hidden && game.state !== 'paused') game.sfx.ensure(); }, true);
 document.addEventListener('visibilitychange', () => {
   const c = game.sfx.ctx;
   if (!c) return;
-  try { if (document.hidden) c.suspend(); else c.resume(); } catch (e) { /* ignore */ }
+  // stay silent behind the pause panel; Resume wakes the audio again
+  try { if (document.hidden) c.suspend(); else if (game.state !== 'paused') c.resume(); } catch (e) { /* ignore */ }
 });
 
 // ---- title ----
@@ -71,13 +72,16 @@ async function startRun() {
     closePanels();
     hide('title'); hide('over'); hide('pause'); hide('btn-mute'); show('btn-pause');
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-    submitted = null;
+    submitted = null; runNo++;
     pendingStart = net.startRun();
     let seed = 0, date = net.dailyDate();
     if (mode === 'daily') {
-      // the daily course comes from the server (its seed is secret); offline falls back to a public seed
-      const r = await Promise.race([pendingStart, new Promise((res) => setTimeout(() => res(null), 2000))]);
-      if (r && r.seed) { seed = r.seed; date = r.date; } else seed = net.dailySeed(date);
+      // The daily course comes from the server (its seed is secret). Wait for it:
+      // the request gives up by itself after 3.5 s. Without it, play a practice
+      // course that is never posted.
+      const r = await pendingStart;
+      if (r && r.seed && r.online) { seed = r.seed; date = r.date; }
+      else { seed = net.dailySeed(date); pendingStart = Promise.resolve(null); }
     }
     missions.runStart(mode);
     game.best = bestFor(mode);
@@ -87,12 +91,14 @@ async function startRun() {
     game.blockHints = seen < 3 ? 1 : 0;
     if (seen < 3) write('fl-blocks', seen + 1);
     game.start(mode, seed, date);
+    if (document.hidden && !params.has('nopause')) game.togglePause();
   } finally { starting = false; }
 }
 
 async function onOver(res) {
+  const start = pendingStart;   // this round's token, whatever starts next
   overAt = performance.now();
-  lastRes = res;
+  lastRes = res; lastCard = null; lastStart = start;
   hide('btn-pause'); show('btn-mute');
   const missionRes = missions.runEnd({ score: res.score, mode: res.mode, duration: res.duration, maxCombo: res.maxCombo, sliced: res.sliced });
   let isNew = false;
@@ -109,14 +115,20 @@ async function onOver(res) {
   show('over');
   refreshTitle();
   game.skin = missions.getBlade();
-  lastCard = await renderCard({ ...res, name: net.name() }, pageUrl.replace(/^https?:\/\//, ''));
-  $('o-card').src = lastCard.toDataURL('image/png');
-  postScore(res);
+  postScore(res, start);
+  try {
+    const card = await renderCard({ ...res, name: net.name() }, pageUrl.replace(/^https?:\/\//, ''));
+    if (lastRes !== res) return;   // a newer round finished meanwhile
+    lastCard = card;
+    $('o-card').src = card.toDataURL('image/png');
+  } catch (e) { /* the card is a nicety: the round is already posted */ }
 }
 
-async function postScore(res) {
-  const start = await pendingStart;
-  if (!start || !start.token) { $('o-rank').textContent = net.online ? '—' : 'offline'; return; }
+async function postScore(res, startP) {
+  const start = await startP;
+  const no = runNo, mine = () => lastRes === res && runNo === no;   // still the round on screen
+  if (!start || !start.token || !start.online) { if (mine()) $('o-rank').textContent = res.mode === 'daily' && !start ? 'practice' : 'offline'; return; }
+  if (!mine()) return;
   if (!net.name()) {
     $('name-input').value = '';
     show('o-name');
@@ -125,6 +137,7 @@ async function postScore(res) {
   }
   $('o-rank').textContent = 'posting…';
   const r = await net.submit({ token: start.token, mode: res.mode, score: res.score, sliced: res.sliced, combos: res.combos, maxCombo: res.maxCombo, bossHits: res.bossHits, seed: res.seed });
+  if (!mine()) return;
   submitted = r;
   if (!r) { $('o-rank').textContent = net.online ? 'not posted' : 'offline'; return; }
   if (r.ok === false) { $('o-rank').textContent = r.error === 'token used' ? 'posted' : 'rejected'; return; }
@@ -138,7 +151,7 @@ $('btn-name').addEventListener('click', () => {
   net.setName(v);
   $('board-name').value = net.name();
   hide('o-name');
-  if (lastRes) postScore(lastRes);
+  if (lastRes) postScore(lastRes, lastStart);
 });
 $('name-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('btn-name').click(); } e.stopPropagation(); });
 
@@ -151,11 +164,16 @@ $('btn-run').addEventListener('click', startRun);
 $('btn-again').addEventListener('click', startRun);
 $('btn-home').addEventListener('click', toMenu);
 $('btn-pause').addEventListener('click', () => { if (game.state === 'playing') game.togglePause(); });
-$('btn-resume').addEventListener('click', () => { if (game.state === 'paused') game.togglePause(); });
+$('btn-resume').addEventListener('click', () => { if (game.state === 'paused') { game.togglePause(); game.sfx.ensure(); } });
 $('btn-restart').addEventListener('click', () => { game.state = 'title'; startRun(); });
 $('btn-quit').addEventListener('click', toMenu);
 document.querySelectorAll('.mode').forEach((el) => el.addEventListener('click', () => { mode = el.dataset.mode; refreshTitle(); el.blur(); }));
-document.addEventListener('click', (e) => { if (e.target && e.target.closest && e.target.closest('button')) game.sfx.ui(); }, true);
+document.addEventListener('click', (e) => {
+  const b = e.target && e.target.closest && e.target.closest('button');
+  if (!b) return;
+  game.sfx.ui();
+  if (e.detail > 0) b.blur();   // a mouse or touch click should not leave Enter bound to that button
+}, true);
 document.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', () => hide(el.dataset.close)));
 
 // leaderboard
@@ -167,7 +185,9 @@ async function openBoard() {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.board === boardTab));
   $('board-status').textContent = 'Loading…';
   $('board-list').innerHTML = ''; $('board-you').textContent = '';
-  const data = await net.board(boardTab, { limit: 25 });
+  // a daily round that crossed midnight was posted to the day it started on
+  const date = boardTab === 'daily' && submitted && submitted.ok && submitted.board === 'daily' ? submitted.date : undefined;
+  const data = await net.board(boardTab, { limit: 25, date });
   if (seq !== boardSeq || $('board').classList.contains('hidden')) return;
   renderBoard(data, net.pid(), boardTab);
 }
@@ -191,15 +211,16 @@ $('btn-missions').addEventListener('click', openMissions);
 const KEYS = ['sound', 'music', 'shake', 'vibrate'];
 function applySettings() {
   write('fl-settings', settings);
-  game.sfx.setMuted(!settings.sound);
-  game.music.setEnabled(settings.music);
+  // the corner button (and M) silences everything; the two toggles choose what plays otherwise
+  game.sfx.setMuted(settings.mute || !settings.sound);
+  game.music.setEnabled(settings.music && !settings.mute);
   game.settings.shake = settings.shake;
-  $('btn-mute').textContent = settings.sound ? 'sound on' : 'sound off';
+  $('btn-mute').textContent = settings.mute ? 'sound off' : 'sound on';
   for (const k of KEYS) $('s-' + k).checked = settings[k];
 }
 for (const k of KEYS) $('s-' + k).addEventListener('change', (e) => { settings[k] = e.target.checked; applySettings(); game.sfx.ensure(); });
 $('btn-settings').addEventListener('click', () => { closePanels(); show('settings'); });
-$('btn-mute').addEventListener('click', () => { settings.sound = !settings.sound; applySettings(); game.sfx.ensure(); });
+$('btn-mute').addEventListener('click', () => { settings.mute = !settings.mute; applySettings(); game.sfx.ensure(); });
 applySettings();
 
 // share / save / copy
