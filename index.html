@@ -21,13 +21,24 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<script>
+// Paint the right theme before the modules load (no flash of the light sheet).
+// src/theme.js makes the real decision and main.js applies it again.
+try { var q = new URLSearchParams(location.search).get('theme'), t = q === 'halloween' || q === 'classic' ? q : null;
+  try { t = t || localStorage.getItem('fl-theme'); } catch (e) { /* private mode */ }
+  if (t === 'halloween' || (t !== 'classic' && Date.now() < Date.UTC(2026, 11, 1))) document.body.classList.add('halloween');
+} catch (e) { /* main.js sets it */ }
+</script>
 <canvas id="game" aria-label="Fault Line"></canvas>
 
 <div class="overlay" id="title">
   <div class="panel">
-    <div class="eyebrow">Seismic community build</div>
-    <h1 class="wordmark" aria-label="Fault Line"><span class="sizer" aria-hidden="true">Fault Line</span><span class="top" aria-hidden="true">Fault Line</span><span class="bot" aria-hidden="true">Fault Line</span></h1>
-    <p class="lede">Your swipe is the fault line. Shatter everything made of glass, and never cut what is shielded.</p>
+    <div class="hero">
+      <div class="eyebrow"><span class="cl">Seismic community build</span><span class="hw">Halloween edition · #ROCKYHalloween</span></div>
+      <h1 class="wordmark" aria-label="Fault Line"><span class="sizer" aria-hidden="true">Fault Line</span><span class="top" aria-hidden="true">Fault Line</span><span class="bot" aria-hidden="true">Fault Line</span></h1>
+      <canvas id="title-rocky" class="hw stage" role="img" aria-label="Jack-o'-Rocky, the Seismic golem in his Halloween costume, waving"></canvas>
+      <p class="lede"><span class="cl">Your swipe is the fault line. Shatter everything made of glass, and never cut what is shielded.</span><span class="hw" id="hw-lede">Jack-o'-Rocky's haunted seismograph: slice the treats, never the cursed potion.</span></p>
+    </div>
     <div class="modes" role="tablist" aria-label="Mode">
       <button class="mode on" data-mode="arcade" type="button" role="tab" aria-selected="true">Arcade <span>60 s</span></button>
       <button class="mode" data-mode="classic" type="button" role="tab" aria-selected="false">Classic</button>
@@ -35,7 +46,9 @@
     </div>
     <div class="controls">
       <div id="mode-text"><span></span></div>
-      <div><span>Three or more in one swipe is an aftershock. Cut a hexagon to trigger its power.</span></div>
+      <div class="cl"><span>Three or more in one swipe is an aftershock. Cut a hexagon to trigger its power.</span></div>
+      <div class="hw"><span class="touch-only">Swipe to slice, two fingers work.</span><span class="mouse-only">Hold the left mouse button and drag to slice.</span> Three or more in one swipe is an aftershock.</div>
+      <div class="hw" id="hw-powers">Slice a power-up for Witching Hour, Double Treat, Frozen Time or Haunt.</div>
     </div>
     <div class="row">
       <button id="btn-run" class="primary" type="button">Play</button>
@@ -90,7 +103,7 @@
 <div class="overlay center hidden" id="pause">
   <div class="panel">
     <div class="eyebrow">Paused</div>
-    <h2 class="title">Take a breath</h2>
+    <h2 class="title"><span class="cl">Take a breath</span><span class="hw">The night can wait</span></h2>
     <div class="row">
       <button id="btn-resume" class="primary" type="button">Resume</button>
       <button id="btn-restart" class="ghost" type="button">Restart</button>
@@ -134,6 +147,7 @@
       <label><input type="checkbox" id="s-music"> Music</label>
       <label><input type="checkbox" id="s-shake"> Screen shake</label>
       <label><input type="checkbox" id="s-vibrate"> Vibration (phones)</label>
+      <label class="theme-switch"><input type="checkbox" id="s-halloween"> Halloween edition <span class="muted small">reloads the page</span></label>
     </div>
     <div class="foot">Progress, missions and your best rounds live in this browser. The leaderboard uses a random player id, never an account.</div>
   </div>

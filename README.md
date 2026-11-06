@@ -6,9 +6,38 @@ the chart, you shatter it, and you never cut what is shielded. Plays on phones
 (portrait or landscape) and on desktop.
 
 It is its own game: its own look (chart paper, ink, stained glass), its own
-objects, its own sound and score. Nothing is shared with Magnitude Run.
+objects, its own sound and score. Nothing is shared with Magnitude Run, except
+Rocky in the Halloween edition.
 
 Fan-made. Not an official Seismic product. No wallet, no account.
+
+![Fault Line Halloween edition](design/halloween-wide.png)
+
+## Halloween edition (#ROCKYHalloween)
+
+Made for SEISCREATE #03. Until the end of November 2026 the game opens in
+its Halloween edition:
+
+- **Night sheet**: the chart turns into a night sky with a full moon, cobwebs,
+  a haunted skyline, graves, bats and fog. The pen traces glow ghost green.
+- **Treats**: Pumpkins, Skulls, Candy Corn, Bats and Ghosts (worth two). The
+  shielded block becomes a **cursed potion**: don't cut it.
+- **Powers**: Witching Hour, Double Treat, Frozen Time and Haunt. The Core
+  becomes **The Great Pumpkin**.
+- **Jack-o'-Rocky** hosts: the Seismic mascot with a carved jack-o'-lantern
+  face, an ember in his chest and a vampire cape. He waves on the title,
+  stands in the corner during a round, cheers your aftershocks and flinches
+  when you cut a potion.
+- **Glowing blades**: Ember, Witch Purple, Candy Stripe, Bone, Ectoplasm.
+- **Halloween music and sound** in a minor key.
+- The share card and share text carry **#ROCKYHalloween**.
+
+It is cosmetic only: hit areas, waves, scoring, the daily course and the
+leaderboards are the same in both looks. **Settings → Halloween edition**
+switches it off or on (it reloads). `?theme=classic` or `?theme=halloween` in
+the address also picks one.
+
+Classic look:
 
 ![Fault Line](design/ingame.png)
 
@@ -95,6 +124,9 @@ in the browser, so a determined cheat can still post a believable score.
 | `src/audio.js`, `src/music.js` | struck-glass bells, skin and wood drums, a plucked line in A Hirajoshi; the drum kit grows with the blitz |
 | `src/missions.js` | missions, rank, blade unlocks |
 | `src/card.js` | 1200×630 share card |
+| `src/theme.js` | which look is on (Halloween or classic), the Halloween palette and names |
+| `src/rocky.js` | Jack-o'-Rocky, drawn in code, and the host that reacts to play |
+| `design/halloween.html` | redraws the #ROCKYHalloween posters (`halloween-wide.png`, `halloween-square.png`) from the game's code |
 | `api/` | Vercel functions |
 
 Notes from the research that shaped it: one point per target and combo = size

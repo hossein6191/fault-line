@@ -1,7 +1,14 @@
 # Design hand-off
 
 Fault Line is its own game. Nothing here should borrow from Magnitude Run: no
-Rocky, no city, no shared art or sound.
+city, no shared art or sound. The one exception is the Halloween edition
+(#ROCKYHalloween), where Rocky appears as Jack-o'-Rocky, the host
+(`src/rocky.js`). The classic look has no Rocky.
+
+`halloween-wide.png` (1600×900) and `halloween-square.png` (1080×1080) are the
+contest posters. `halloween.html` redraws them from the game's own code: open
+`/design/halloween.html?theme=halloween` through `node serve.mjs 5174` and call
+`window.__saveAll()` in the console.
 
 ## The idea
 

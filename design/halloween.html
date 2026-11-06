@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fault Line Halloween poster</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  body { margin: 0; background: #0b0613; color: #F3E7EC; font-family: 'Instrument Sans', system-ui, sans-serif; }
+  .bar { padding: 12px 16px; font-size: 13px; color: rgba(243,231,236,.65); }
+  .grid { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; padding: 16px; }
+  figure { margin: 0; display: grid; gap: 6px; font-size: 12px; color: rgba(243,231,236,.6); }
+  canvas { display: block; max-width: 100%; height: auto; }
+</style>
+</head>
+<body>
+<div class="bar">The #ROCKYHalloween poster for Fault Line, drawn from the game's own code (night sheet, treats, Jack-o'-Rocky). Open through <code>node serve.mjs</code> with <code>?theme=halloween</code>; <code>window.__saveAll()</code> writes the files.</div>
+<div class="grid" id="grid"></div>
+<script type="module">
+  import { HW } from '../src/theme.js';
+  import { drawPaper } from '../src/paper.js';
+  import { buildSprites } from '../src/targets.js';
+  import { BLADE_SKINS } from '../src/blade.js';
+  import { drawRocky, POSES } from '../src/rocky.js';
+
+  await document.fonts.load('700 120px "Instrument Sans"');
+  await document.fonts.load('600 40px "Instrument Sans"');
+  await document.fonts.load('500 20px "IBM Plex Mono"');
+  await document.fonts.load('600 20px "IBM Plex Mono"');
+
+  const Q = 4;                       // sprite quality: drawn up to ~3x without blur
+  const SP = buildSprites(Q);
+  const EMBER = BLADE_SKINS.pearl;   // the default Halloween blade
+
+  // a cached sprite, centred at (x, y), k = scale (1 = in-game size), a = rotation
+  function sprite(g, key, x, y, k, a = 0) {
+    const s = SP[key]; const n = s.pad * 2 * k;
+    g.save(); g.translate(x, y); g.rotate(a); g.drawImage(s.c, -n / 2, -n / 2, n, n); g.restore();
+  }
+
+  // a sprite cut in two along direction (dx, dy): the halves drift apart along the normal
+  function sliced(g, key, x, y, k, dx, dy, gap) {
+    const s = SP[key]; const n = s.pad * 2 * k;
+    const len = Math.hypot(dx, dy); dx /= len; dy /= len;
+    const nx = -dy, ny = dx;
+    for (const side of [-1, 1]) {
+      g.save();
+      g.translate(x + nx * gap * side, y + ny * gap * side);
+      g.rotate(side * 0.1);
+      g.beginPath();
+      const L = n;
+      g.moveTo(-dx * L, -dy * L); g.lineTo(dx * L, dy * L);
+      g.lineTo(dx * L + nx * L * side, dy * L + ny * L * side); g.lineTo(-dx * L + nx * L * side, -dy * L + ny * L * side);
+      g.closePath(); g.clip();
+      g.drawImage(s.c, -n / 2, -n / 2, n, n);
+      // the cut face: bright pumpkin flesh along the edge
+      g.strokeStyle = 'rgba(255,214,120,0.95)'; g.lineWidth = 3.2 * k; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(-dx * 30 * k, -dy * 30 * k); g.lineTo(dx * 30 * k, dy * 30 * k); g.stroke();
+      g.restore();
+    }
+  }
+
+  // the ember blade: a tapered glowing stroke along a quadratic curve
+  function slash(g, p0, p1, p2, w) {
+    const N = 64, L = [], Rt = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, u = 1 - t;
+      const x = u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0];
+      const y = u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1];
+      const tx = 2 * u * (p1[0] - p0[0]) + 2 * t * (p2[0] - p1[0]);
+      const ty = 2 * u * (p1[1] - p0[1]) + 2 * t * (p2[1] - p1[1]);
+      const l = Math.hypot(tx, ty) || 1;
+      const ww = w * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.15)), 0.8) * (0.35 + 0.65 * t);
+      L.push([x - ty / l * ww, y + tx / l * ww]); Rt.push([x + ty / l * ww, y - tx / l * ww]);
+    }
+    const shape = (k) => {
+      g.beginPath();
+      const c = (P, i) => { const m = (L[i][0] + Rt[i][0]) / 2, n = (L[i][1] + Rt[i][1]) / 2; return [m + (P[i][0] - m) * k, n + (P[i][1] - n) * k]; };
+      g.moveTo(...c(L, 0));
+      for (let i = 1; i <= N; i++) g.lineTo(...c(L, i));
+      for (let i = N; i >= 0; i--) g.lineTo(...c(Rt, i));
+      g.closePath();
+    };
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.shadowColor = `rgba(${EMBER.glow},0.9)`; g.shadowBlur = w * 4;
+    shape(2.4); g.fillStyle = `rgba(${EMBER.glow},0.22)`; g.fill();
+    g.shadowBlur = w * 2;
+    shape(1.3); g.fillStyle = `rgba(${EMBER.core},0.9)`; g.fill();
+    g.shadowBlur = 0;
+    shape(0.45); g.fillStyle = `rgba(${EMBER.hot},1)`; g.fill();
+    g.restore();
+    // sparks thrown off the cut
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    g.save(); g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 26; i++) {
+      const t = 0.15 + rnd() * 0.85, u = 1 - t;
+      const x = u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0] + (rnd() - 0.5) * w * 6;
+      const y = u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1] + (rnd() - 0.5) * w * 6;
+      const r = 1 + rnd() * w * 0.28;
+      g.fillStyle = `rgba(${rnd() < 0.5 ? EMBER.core : EMBER.hot},${0.5 + rnd() * 0.5})`;
+      g.shadowColor = `rgba(${EMBER.glow},1)`; g.shadowBlur = r * 4;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+  }
+
+  // pumpkin juice and seeds flung from the cut
+  function juice(g, x, y, k, dir) {
+    let seed = 11;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    for (let i = 0; i < 16; i++) {
+      const a = dir + (rnd() - 0.5) * 1.6, d = (26 + rnd() * 70) * k;
+      const px = x + Math.cos(a) * d, py = y + Math.sin(a) * d;
+      if (i % 3 === 0) {   // a seed
+        g.save(); g.translate(px, py); g.rotate(a);
+        g.fillStyle = '#F6E7C4'; g.strokeStyle = 'rgba(40,20,10,0.6)'; g.lineWidth = 1;
+        g.beginPath(); g.ellipse(0, 0, 4.2 * k, 2.4 * k, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+        g.restore();
+      } else {
+        g.fillStyle = i % 2 ? HW.pumpkin : '#FFB347';
+        g.beginPath(); g.arc(px, py, (2 + rnd() * 4) * k, 0, Math.PI * 2); g.fill();
+      }
+    }
+  }
+
+  // the wordmark, cut along a fault, the lower half slipped (as on the title screen)
+  function wordmark(g, text, x, y, size) {
+    g.font = `700 ${size}px "Instrument Sans", sans-serif`;
+    if ('letterSpacing' in g) g.letterSpacing = `${-0.04 * size}px`;
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    const w = g.measureText(text).width;
+    const top = y - size * 0.92, h = size * 1.2;
+    const yl = top + h * 0.64, yr = top + h * 0.44;   // the fault: lower on the left, higher on the right
+    g.save();
+    g.beginPath(); g.moveTo(x - 10, top - 20); g.lineTo(x + w + 20, top - 20); g.lineTo(x + w + 20, yr); g.lineTo(x - 10, yl); g.closePath(); g.clip();
+    g.fillStyle = HW.ink; g.shadowColor = 'rgba(0,0,0,0.5)'; g.shadowBlur = size * 0.12;
+    g.fillText(text, x, y);
+    g.restore();
+    g.save();
+    g.beginPath(); g.moveTo(x - 10, yl); g.lineTo(x + w + 20, yr); g.lineTo(x + w + 20, top + h + 30); g.lineTo(x - 10, top + h + 30); g.closePath(); g.clip();
+    g.fillStyle = HW.pumpkin; g.shadowColor = `rgba(${HW.ember},0.55)`; g.shadowBlur = size * 0.18;
+    g.fillText(text, x + size * 0.06, y + size * 0.045);
+    g.restore();
+    if ('letterSpacing' in g) g.letterSpacing = '0px';
+    return w;
+  }
+
+  function mono(g, text, x, y, size, color, spacing = 0.14, weight = 500, align = 'left') {
+    g.font = `${weight} ${size}px "IBM Plex Mono", ui-monospace, monospace`;
+    if ('letterSpacing' in g) g.letterSpacing = `${size * spacing}px`;
+    g.textAlign = align; g.fillStyle = color; g.fillText(text, x, y);
+    if ('letterSpacing' in g) g.letterSpacing = '0px';
+  }
+
+  // the night sheet, baked at a smaller size and scaled up so the moon and skyline read at poster size
+  function sheet(g, W, H, k) {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const s = c.getContext('2d');
+    s.scale(k, k);
+    drawPaper(s, W / k, H / k, { labels: true, night: true });
+    g.drawImage(c, 0, 0);
+  }
+
+  // a soft dark wash so the text reads over the grid
+  function wash(g, x, y, r, a) {
+    const rg = g.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, `rgba(11,6,19,${a})`); rg.addColorStop(1, 'rgba(11,6,19,0)');
+    g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  // Rocky's lantern light on the ground and his shadow
+  function host(g, x, y, s) {
+    const r = 60 * s, lg = g.createRadialGradient(x + 4 * s, y, 1, x + 4 * s, y, r);
+    lg.addColorStop(0, `rgba(${HW.ember},0.34)`); lg.addColorStop(1, `rgba(${HW.ember},0)`);
+    g.fillStyle = lg; g.fillRect(x + 4 * s - r, y - r, r * 2, r * 2);
+    g.fillStyle = 'rgba(6,3,10,0.55)';
+    g.beginPath(); g.ellipse(x + 2 * s, y + 2, 28 * s, 5.5 * s, 0, 0, Math.PI * 2); g.fill();
+    // the inside of a sliced pumpkin glows on him: a warm rim light from the cut
+    const rim = g.createRadialGradient(x - 60 * s, y - 60 * s, 0, x - 60 * s, y - 60 * s, 90 * s);
+    rim.addColorStop(0, `rgba(${HW.ember},0.18)`); rim.addColorStop(1, `rgba(${HW.ember},0)`);
+    g.fillStyle = rim; g.fillRect(x - 150 * s, y - 150 * s, 180 * s, 180 * s);
+    drawRocky(g, x, y, s, POSES.cheer(0.3), { t: 0.3, glow: 1.1, fire: 1 });
+  }
+
+  function poster(g, W, H) {
+    const wide = W > H * 1.2;
+    sheet(g, W, H, wide ? 1.5 : 1.35);
+    // ground fog over the graves, so the hashtag sits on calm ground
+    const fog = g.createLinearGradient(0, H * 0.72, 0, H);
+    fog.addColorStop(0, 'rgba(11,6,19,0)'); fog.addColorStop(1, 'rgba(11,6,19,0.72)');
+    g.fillStyle = fog; g.fillRect(0, H * 0.72, W, H * 0.28);
+
+    if (wide) {
+      wash(g, 420, 300, 520, 0.6);
+      // the cut: ember blade through a pumpkin
+      const cx = 640, cy = 560;
+      juice(g, cx + 10, cy - 6, 1.5, -0.95);
+      sliced(g, 'orb', cx, cy, 2.5, 1, -0.78, 16);
+      slash(g, [330, 800], [560, 650], [930, 330], 11);
+      sprite(g, 'star', 980, 560, 1.9, 0.12);
+      sprite(g, 'dart', 1010, 300, 1.5, -0.2);
+      sprite(g, 'lens', 300, 590, 1.7, -0.25);
+      sprite(g, 'prism', 860, 700, 1.6, 0.5);
+      sprite(g, 'block', 470, 450, 1.35, -0.12);
+      mono(g, "CURSED · DON'T CUT", 470, 395, 15, `rgba(${HW.ghostGlow},0.85)`, 0.12, 600, 'center');
+      host(g, 1300, 846, 5.4);
+      mono(g, 'SEISCREATE #03 · HALLOWEEN EDITION', 92, 128, 20, `rgba(${HW.ember},0.95)`, 0.16, 600);
+      wordmark(g, 'Fault Line', 84, 290, 168);
+      g.font = '500 30px "Instrument Sans", sans-serif'; g.fillStyle = HW.inkSoft; g.textAlign = 'left';
+      g.fillText('Slice the treats. Spare the cursed potions.', 92, 360);
+      g.font = '700 64px "Instrument Sans", sans-serif'; g.fillStyle = HW.pumpkin;
+      g.shadowColor = `rgba(${HW.ember},0.55)`; g.shadowBlur = 18;
+      g.fillText('#ROCKYHalloween', 92, 838); g.shadowBlur = 0;
+      mono(g, 'SEISMIC COMMUNITY BUILD · NO WALLET', 96, 870, 16, 'rgba(243,231,236,0.6)', 0.16, 500);
+    } else {
+      wash(g, 340, 230, 460, 0.6);
+      const cx = 360, cy = 640;
+      juice(g, cx + 10, cy - 6, 1.4, -0.95);
+      sliced(g, 'orb', cx, cy, 2.3, 1, -0.78, 15);
+      slash(g, [90, 860], [290, 740], [620, 430], 10);
+      sprite(g, 'star', 610, 620, 1.7, 0.12);
+      sprite(g, 'dart', 600, 380, 1.35, -0.2);
+      sprite(g, 'lens', 150, 560, 1.5, -0.25);
+      sprite(g, 'prism', 560, 800, 1.45, 0.5);
+      sprite(g, 'block', 230, 410, 1.2, -0.12);
+      mono(g, "CURSED · DON'T CUT", 230, 362, 14, `rgba(${HW.ghostGlow},0.85)`, 0.12, 600, 'center');
+      host(g, 850, 1010, 4.9);
+      mono(g, 'SEISCREATE #03 · HALLOWEEN EDITION', 74, 106, 19, `rgba(${HW.ember},0.95)`, 0.16, 600);
+      wordmark(g, 'Fault Line', 66, 252, 150);
+      g.font = '500 28px "Instrument Sans", sans-serif'; g.fillStyle = HW.inkSoft; g.textAlign = 'left';
+      g.fillText('Slice the treats. Spare the cursed potions.', 74, 316);
+      g.font = '700 60px "Instrument Sans", sans-serif'; g.fillStyle = HW.pumpkin;
+      g.shadowColor = `rgba(${HW.ember},0.55)`; g.shadowBlur = 18;
+      g.fillText('#ROCKYHalloween', 74, 990); g.shadowBlur = 0;
+      mono(g, 'SEISMIC COMMUNITY BUILD · NO WALLET', 78, 1030, 15, 'rgba(243,231,236,0.6)', 0.16, 500);
+    }
+  }
+
+  const out = {};
+  function make(name, w, h, label) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    poster(c.getContext('2d'), w, h);
+    out[name] = c;
+    const f = document.createElement('figure');
+    c.style.width = Math.min(w, 760) + 'px';
+    f.appendChild(c);
+    const cap = document.createElement('figcaption'); cap.textContent = `${label} · ${w}×${h}`; f.appendChild(cap);
+    document.getElementById('grid').appendChild(f);
+  }
+  make('halloween-wide', 1600, 900, 'post, wide');
+  make('halloween-square', 1080, 1080, 'post, square');
+
+  // dev helper: the local server writes each file to design/<name>.png
+  window.__saveAll = async () => {
+    const done = [];
+    for (const [name, c] of Object.entries(out)) {
+      const blob = await new Promise((ok) => c.toBlob(ok, 'image/png'));
+      const r = await fetch('/_dev/save?name=' + name, { method: 'POST', body: blob });
+      done.push([name, r.ok]);
+    }
+    return done;
+  };
+  window.__ready = true;
+</script>
+</body>
+</html>

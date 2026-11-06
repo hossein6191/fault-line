@@ -4,7 +4,8 @@ import { renderCard } from './card.js';
 import { net, fmtRank } from './net.js';
 import { Missions, BLADES } from './missions.js';
 import { registerPwa, canInstall, promptInstall, onInstallChange } from './pwa.js';
-import { $, show, hide, renderBoard, renderRank, renderMissions, renderBlades, renderStats, renderOver } from './ui.js';
+import { $, show, hide, renderBoard, renderRank, renderMissions, renderBlades, renderStats, renderOver, themeScreens, mountTitleRocky } from './ui.js';
+import { HALLOWEEN, HNAMES, setTheme } from './theme.js';
 
 const canvas = $('game');
 const pageUrl = location.origin + location.pathname;
@@ -12,11 +13,20 @@ const params = new URLSearchParams(location.search);
 const read = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
 const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } };
 
-const MODE_TEXT = {
+const MODE_TEXT = HALLOWEEN ? {
+  arcade: `Sixty seconds. Slice every treat, then carve up ${HNAMES.boss}.`,
+  classic: `No clock. A missed treat or a cut ${HNAMES.block} is a crack. Three cracks ends it.`,
+  daily: 'Today’s course, the same for everyone. One shared board.',
+} : {
   arcade: 'Sixty seconds. Cut everything made of glass, then break the Core.',
   classic: 'No clock. A missed target or a cut block is a crack. Three cracks ends it.',
   daily: 'Today’s course, the same for everyone. One shared board.',
 };
+
+// ---- theme: the Halloween edition (#ROCKYHalloween) or the classic sheet ----
+document.body.classList.toggle('halloween', HALLOWEEN);
+themeScreens();
+mountTitleRocky();
 
 // ---- state ----
 let calm = false;
@@ -220,6 +230,14 @@ function applySettings() {
 }
 for (const k of KEYS) $('s-' + k).addEventListener('change', (e) => { settings[k] = e.target.checked; applySettings(); game.sfx.ensure(); });
 $('btn-settings').addEventListener('click', () => { closePanels(); show('settings'); });
+$('s-halloween').checked = HALLOWEEN;
+$('s-halloween').addEventListener('change', (e) => {
+  setTheme(e.target.checked ? 'halloween' : 'classic');
+  // a ?theme= in the address would win over the stored choice, so drop it
+  const u = new URL(location.href);
+  u.searchParams.delete('theme');
+  location.replace(u.toString());
+});
 $('btn-mute').addEventListener('click', () => { settings.mute = !settings.mute; applySettings(); game.sfx.ensure(); });
 applySettings();
 
@@ -229,14 +247,16 @@ function shareText() {
   const where = lastRes.mode === 'daily' ? `Daily ${lastRes.date}` : lastRes.mode === 'classic' ? 'Classic' : 'Arcade';
   const rank = submitted && submitted.ok && submitted.rank ? ` ${fmtRank(submitted.rank, submitted.total)}.` : '';
   const combo = lastRes.maxCombo ? `, best aftershock x${lastRes.maxCombo}` : '';
+  if (HALLOWEEN) return `Fault Line Halloween · ${where}: ${lastRes.score} points, ${lastRes.sliced} treats sliced${combo}.${rank} Beat me: ${pageUrl} #ROCKYHalloween`;
   return `Fault Line · ${where}: ${lastRes.score} points, ${lastRes.sliced} shattered${combo}.${rank} Beat me: ${pageUrl}`;
 }
+const cardName = () => `fault-line-${HALLOWEEN ? 'halloween-' : ''}${lastRes.score}.png`;
 function flash(btn, text) { const old = btn.textContent; btn.textContent = text; setTimeout(() => { btn.textContent = old; }, 1500); }
 $('btn-save').addEventListener('click', () => {
   if (!lastCard || !lastRes) return;
   const a = document.createElement('a');
   a.href = lastCard.toDataURL('image/png');
-  a.download = `fault-line-${lastRes.score}.png`;
+  a.download = cardName();
   a.click();
 });
 $('btn-copy').addEventListener('click', async () => {
@@ -246,7 +266,7 @@ $('btn-copy').addEventListener('click', async () => {
 $('btn-share').addEventListener('click', () => {
   if (!lastCard || !lastRes) return;
   lastCard.toBlob(async (blob) => {
-    const file = new File([blob], `fault-line-${lastRes.score}.png`, { type: 'image/png' });
+    const file = new File([blob], cardName(), { type: 'image/png' });
     const data = { files: [file], text: shareText(), title: 'Fault Line' };
     try {
       if (navigator.canShare && navigator.canShare(data)) await navigator.share(data);

@@ -12,6 +12,8 @@ import { Music } from './music.js';
 import { TYPES, BASE_TYPES, POWERS, buildSprites, spriteKey, drawBoss } from './targets.js';
 import { Blade, BLADE_SKINS, segDist } from './blade.js';
 import { magnitudeFor, tierFor } from './score.js';
+import { HALLOWEEN, HW, HNAMES, HPOWERS } from './theme.js';
+import { RockyHost } from './rocky.js';
 
 export const ROUND = 60;
 const BOSS_TIME = 3.4;
@@ -24,6 +26,28 @@ const CLEAN_FRAC = 0.34;       // cut within this fraction of the radius = clean
 const GRAVITY = 820;           // at H = 600; scaled with the playfield height
 const MAX_PARTS = 300;
 const BLITZ = ['', 'Blitz', 'Great', 'Awesome', 'Super', 'Hyper', 'Unreal'];
+
+// Ink for everything the game draws over the chart. Classic: dark ink on pale
+// paper. Halloween: light ink, pumpkin orange and ghost green on the night sheet.
+// (r,g,b strings for rgba(); the classic values are the original literals.)
+const C = HALLOWEEN ? {
+  ink: HW.ink, inkRgb: '243,231,236', soft: 'rgba(243,231,236,0.7)', faint: 'rgba(243,231,236,0.55)',
+  accent: HW.pumpkin, accentRgb: '255,138,42', deep: HW.pumpkin, deepRgb: '255,138,42',
+  halo: 'rgba(21,13,32,0.92)', top: '21,13,32', topA: 0.55,
+  stasis: 'rgba(190,255,210,0.07)', ampGlow: '255,138,42', shieldFlash: '141,255,158', quakeFlash: '255,138,42',
+  rail: 'rgba(243,231,236,0.16)', ring: '255,138,42', spark: '255,150,60',
+} : {
+  ink: '#161616', inkRgb: '22,22,22', soft: 'rgba(22,22,22,0.6)', faint: 'rgba(22,22,22,0.5)',
+  accent: '#825A6D', accentRgb: '130,90,109', deep: '#523542', deepRgb: '82,53,66',
+  halo: 'rgba(247,244,245,0.95)', top: '247,244,245', topA: 0.9,
+  stasis: 'rgba(130,90,109,0.1)', ampGlow: '130,90,109', shieldFlash: '22,22,22', quakeFlash: '130,90,109',
+  rail: 'rgba(22,22,22,0.12)', ring: '82,53,66', spark: '61,39,49',
+};
+// popup colours named by their classic value, re-inked for the night sheet
+const POP = { '22,22,22': '243,231,236', '82,53,66': '255,138,42', '130,90,109': '141,255,158' };
+// Halloween juice: what each treat spills when it is cut
+const JUICE = { orb: ['255,138,42', '255,196,90'], lens: ['237,227,207', '200,190,170'], prism: ['255,196,74', '255,138,42'], dart: ['150,90,190', '90,50,120'], star: ['190,255,210', '232,242,234'] };
+const PNAME = (k) => (HALLOWEEN ? HPOWERS[k] : POWERS[k]);
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, k) => a + (b - a) * k;
@@ -38,6 +62,8 @@ export class Game {
     this.music = new Music(() => this.sfx.ctx, () => this.sfx.musicBus);
     this.music.start();
     this.bg = new Paper();
+    // Halloween: Jack-o'-Rocky hosts from a bottom corner (cosmetic only)
+    this.rocky = HALLOWEEN ? new RockyHost() : null;
     this.settings = { shake: true };
     this.skin = 'pearl';
     this.state = 'title';
@@ -124,6 +150,7 @@ export class Game {
       this.powerPlan = [{ at: 9 + r() * 6, kind: kinds[0] }, { at: 25 + r() * 7, kind: kinds[1] }, { at: 41 + r() * 7, kind: kinds[2] }];
     } else this.nextPowerAt = 50 + Math.floor(r() * 30);
     if (this.needTutorial) { this.phase = 'tutorial'; this.tutStage = 0; this.tutTries = 0; this.tutorialToss(); }
+    if (this.rocky) { this.rocky.reset(); this.rocky.react('wave', 1.8); }
     this.sfx.ensure();
     this.music.start(); this.music.setDanger(0); this.music.setBlitz(0); this.music.setIntensity(0.15); this.music.setState('playing');
     this.sfx.start();
@@ -210,10 +237,10 @@ export class Game {
     if (clean) { pts += mult; this.cleans++; }
     this.score += pts; this.sliced++; this.scorePulse = 1;
     this.halves(o, ang);
-    this.frags(o.x, o.y, 9, o.vx, o.vy, ang);
+    this.frags(o.x, o.y, 9, o.vx, o.vy, ang, HALLOWEEN ? JUICE[o.type] : null);
     if (this.mode === 'classic' && this.state === 'playing' && this.score >= this.nextHeal) {
       this.nextHeal += 100;
-      if (this.cracks > 0 && this.phase === 'round') { this.cracks--; this.crackMarks.pop(); this.music.setDanger(this.cracks); this.popup(this.W / 2, this.H * 0.3, 'CRACK REPAIRED', 18, '82,53,66', 1.4); this.sfx.power(); }
+      if (this.cracks > 0 && this.phase === 'round') { this.cracks--; this.crackMarks.pop(); this.music.setDanger(this.cracks); this.popup(this.W / 2, this.H * 0.3, 'CRACK REPAIRED', 18, '82,53,66', 1.4); this.sfx.power(); if (this.rocky) this.rocky.react('cheer', 1); }
     }
     this.addPart({ kind: 'cut', x: o.x, y: o.y, ang, len: o.r * 1.7, t: 0, life: 0.16 });
     if (clean) { this.addPart({ kind: 'star', x: o.x, y: o.y, t: 0, life: 0.35, size: 20 }); this.popup(o.x, o.y - o.r - 8, `clean +${pts}`, 13); }
@@ -249,6 +276,7 @@ export class Game {
     this.popup(x, y, `AFTERSHOCK x${n}`, 20, '82,53,66', 1.1, `+${bonus}`);
     if (blitz) this.popup(x, y + 42, `${BLITZ[tier].toLowerCase()} +${blitz}`, 13, '130,90,109', 1);
     this.sfx.combo(n);
+    if (this.rocky) this.rocky.react('cheer', tier ? 1.4 : n >= 5 ? 1.1 : 0.85);
     this.hitstop = Math.max(this.hitstop, n >= 5 ? 0.07 : 0.035);
     this.shake = Math.max(this.shake, n >= 5 ? 8 : 4);
     this.emit('combo', n);
@@ -263,13 +291,15 @@ export class Game {
     this.chain = 0; this.lastComboAt = -9; this.music.setBlitz(0);
     this.power.amp = 0; this.power.stasis = 0; this.power.frenzy = 0;
     this.hitstop = 0.11; this.pity = true;
-    this.flash = 0.55; this.flashCol = '22,22,22';
+    this.flash = 0.55; this.flashCol = C.shieldFlash;
     this.shake = 13;
     this.sfx.clang();
     this.vibrate([30, 30, 60]);
+    if (this.rocky) this.rocky.react('flinch', 0.95);
+    const stone = HALLOWEEN ? [HW.potion, HW.slime, '#4A1A78'] : ['#161616', '#3D2731', '#523542'];
     for (let i = 0; i < 16; i++) {
       const a = Math.random() * 6.28, s = 120 + Math.random() * 380;
-      this.addPart({ kind: 'stone', x: o.x, y: o.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 14, size: 4 + Math.random() * 8, t: 0, life: 0.8 + Math.random() * 0.5, col: ['#161616', '#3D2731', '#523542'][i % 3] });
+      this.addPart({ kind: 'stone', x: o.x, y: o.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 14, size: 4 + Math.random() * 8, t: 0, life: 0.8 + Math.random() * 0.5, col: stone[i % 3] });
     }
     this.addPart({ kind: 'ring', x: o.x, y: o.y, t: 0, life: 0.5, r0: 20, r1: 220 });
     // the blast throws everything else clear; none of it counts for or against you
@@ -282,20 +312,22 @@ export class Game {
     else {
       const loss = Math.min(10, this.score);
       this.score -= loss;
-      this.popup(o.x, o.y - 40, `shielded -${loss}`, 16, '22,22,22', 1.2);
+      if (HALLOWEEN) this.popup(o.x, o.y - 40, `cursed -${loss}`, 16, '130,90,109', 1.2);
+      else this.popup(o.x, o.y - 40, `shielded -${loss}`, 16, '22,22,22', 1.2);
     }
     this.emit('shieldhit', 1);
   }
 
   takePower(o) {
     o.alive = false;
-    const P = POWERS[o.kind];
+    const P = POWERS[o.kind], shown = PNAME(o.kind);
     this.powersUsed++;
     this.frags(o.x, o.y, 10, o.vx, o.vy);
     this.addPart({ kind: 'ring', x: o.x, y: o.y, t: 0, life: 0.45, r0: 16, r1: 160 });
-    this.banner = { t: 1.9, title: P.name.toUpperCase(), sub: P.text };
+    this.banner = { t: 1.9, title: shown.name.toUpperCase(), sub: shown.text };
     this.sfx.power();
     this.vibrate(25);
+    if (this.rocky) this.rocky.react('cheer', 1);
     if (o.kind === 'overclock') { this.power.frenzy = P.dur; this.frenzyT = 0; }
     else if (o.kind === 'amp') this.power.amp = P.dur;
     else if (o.kind === 'stasis') this.power.stasis = P.dur;
@@ -312,7 +344,7 @@ export class Game {
       sx += t.x; sy += t.y; n++;
       this.slice(t, null, Math.random() * Math.PI, t.r);
     }
-    this.shake = 16; this.flash = 0.5; this.flashCol = '130,90,109';
+    this.shake = 16; this.flash = 0.5; this.flashCol = C.quakeFlash;
     this.sfx.quake();
     this.bg.pulse(this.W / 2);
     this.vibrate([40, 40, 80]);
@@ -330,6 +362,7 @@ export class Game {
     if (b.cracks.length > 26) b.cracks.shift();
     this.frags(x, y, 4, c * 120, s * 120);
     this.sfx.bossHit(b.hits);
+    if (this.rocky) this.rocky.react('cheer', 0.6);
     this.shake = Math.max(this.shake, 3);
     this.vibrate(6);
   }
@@ -340,8 +373,9 @@ export class Game {
     this.score += bonus; this.scorePulse = 1;
     for (let i = 0; i < 5; i++) this.frags(b.x + (Math.random() - 0.5) * 100, b.y + (Math.random() - 0.5) * 100, 10, 0, -80);
     this.addPart({ kind: 'ring', x: b.x, y: b.y, t: 0, life: 0.7, r0: 40, r1: 420 });
-    this.popup(b.x, b.y, `CORE x${b.hits}`, 24, '82,53,66', 1.6, `+${b.hits * mult + bonus}`);
-    this.shake = 18; this.flash = 0.7; this.flashCol = '130,90,109';
+    this.popup(b.x, b.y, `${HALLOWEEN ? 'GREAT PUMPKIN' : 'CORE'} x${b.hits}`, 24, '82,53,66', 1.6, `+${b.hits * mult + bonus}`);
+    this.shake = 18; this.flash = 0.7; this.flashCol = C.quakeFlash;
+    if (this.rocky) { this.rocky.tilt = 0; this.rocky.react('celebrate', 3); }
     this.sfx.bossBreak();
     this.bg.pulse(b.x);
     this.vibrate([60, 40, 120]);
@@ -361,11 +395,12 @@ export class Game {
     this.music.setDanger(this.cracks);
     this.shake = Math.max(this.shake, 7);
     this.pity = true;
+    if (this.rocky) this.rocky.react('flinch', this.cracks >= 3 ? 1.6 : 0.85);
     if (why === 'miss') { this.sfx.miss(); this.popup(clamp(x, 50, this.W - 50), H - 70, 'missed', 14, '82,53,66', 1); this.vibrate(40); }
     if (this.cracks >= 3) {
       this.phase = 'ending'; this.endT = 1.4; this.timeScale = 0.35;
       this.clearBlades();
-      this.flash = 0.6; this.flashCol = '22,22,22';
+      this.flash = 0.6; this.flashCol = C.shieldFlash;
       this.sfx.bossBreak();
       this.music.duck(1.2);
     }
@@ -406,6 +441,7 @@ export class Game {
     this.score = 0; this.sliced = 0; this.cleans = 0; this.combos = 0; this.maxCombo = 0; this.chain = 0; this.lastComboAt = -9;
     for (const b of this.blades.values()) { b.count = 0; b.cx = 0; b.cy = 0; }
     this.needTutorial = false;
+    if (this.rocky) this.rocky.react('wave', 1.6);
     this.hooks.onTutorial && this.hooks.onTutorial();
   }
 
@@ -512,11 +548,14 @@ export class Game {
 
   // ---------- fx ----------
   addPart(p) { if (this.parts.length < MAX_PARTS) this.parts.push(p); }
-  frags(x, y, n, vx = 0, vy = 0, ang = null) {
+  // juice: two r,g,b tints for the shards (Halloween), or null for stained glass
+  frags(x, y, n, vx = 0, vy = 0, ang = null, juice = null) {
     for (let i = 0; i < n; i++) {
       // with a cut angle, most shards fly along the blade
       const a = ang == null || i % 3 === 0 ? Math.random() * 6.28 : ang + (Math.random() - 0.5) * 2 + (i % 2 ? Math.PI : 0), s = 70 + Math.random() * 260;
-      this.addPart({ kind: 'glass', x, y, vx: Math.cos(a) * s + vx * 0.4, vy: Math.sin(a) * s + vy * 0.4 - 60, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 16, size: 3 + Math.random() * 7, t: 0, life: 0.5 + Math.random() * 0.5 });
+      const p = { kind: 'glass', x, y, vx: Math.cos(a) * s + vx * 0.4, vy: Math.sin(a) * s + vy * 0.4 - 60, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 16, size: 3 + Math.random() * 7, t: 0, life: 0.5 + Math.random() * 0.5 };
+      if (juice) p.col = juice[i % 2];
+      this.addPart(p);
     }
     for (let i = 0; i < 3; i++) {
       const a = Math.random() * 6.28, s = 40 + Math.random() * 160;
@@ -529,7 +568,7 @@ export class Game {
       this.pieces.push({ key, r: o.r, x: o.x, y: o.y, vx: o.vx * 0.6 + nx * side * 120 + Math.cos(ang) * 40, vy: o.vy * 0.6 + ny * side * 120 - 40, rot: o.rot, vr: o.vr + side * (2 + Math.random() * 3), ca, side, t: 0, life: 0.85 });
     }
   }
-  popup(x, y, text, size = 14, col = '22,22,22', life = 0.9, sub = '') { this.popups.push({ x, y, text, size, col, t: 0, life, sub }); }
+  popup(x, y, text, size = 14, col = '22,22,22', life = 0.9, sub = '') { if (HALLOWEEN) col = POP[col] || col; this.popups.push({ x, y, text, size, col, t: 0, life, sub }); }
   emit(name, value) { if (this.state === 'playing' && this.hooks.onEvent) this.hooks.onEvent(name, value); }
   vibrate(p) { if (this.hooks.onVibrate) this.hooks.onVibrate(p); }
 
@@ -540,7 +579,7 @@ export class Game {
     if (big) list.push({ name: `Aftershock x${c}`, points: big });
     const n = this.combos, many = n >= 30 ? 50 : n >= 20 ? 35 : n >= 15 ? 25 : n >= 10 ? 15 : n >= 5 ? 10 : 0;
     if (many) list.push({ name: `${n} aftershocks`, points: many });
-    if (this.shieldHits === 0 && this.sliced >= 20) list.push({ name: 'Nothing shielded was cut', points: 10 });
+    if (this.shieldHits === 0 && this.sliced >= 20) list.push({ name: HALLOWEEN ? 'No cursed potion was cut' : 'Nothing shielded was cut', points: 10 });
     if (this.powersUsed >= 3) list.push({ name: 'All three powers', points: 10 });
     if (this.cleans >= 15) list.push({ name: `${this.cleans} clean cuts`, points: 15 });
     list.sort((a, b) => b.points - a.points);
@@ -585,6 +624,7 @@ export class Game {
     if (this.banner) { this.banner.t -= dt; if (this.banner.t <= 0) this.banner = null; }
     this.bg.quake = Math.min(1, this.shake / 14);
     this.bg.update(dt);
+    if (this.rocky && this.state !== 'title') this.rocky.update(dt);
     if (this.hitstop > 0) { this.hitstop -= dt; this.updateFx(dt * 0.2); return; }
 
     if (this.state === 'title') {
@@ -649,7 +689,8 @@ export class Game {
     this.phase = 'boss';
     for (const o of this.targets) o.blown = true;
     this.boss = { x: this.W / 2, y: this.H + 120, ty: this.H * 0.42, r: TYPES.boss.r, hits: 0, t: 0, ph: 0, punch: 0, cracks: [], alive: true, lastHit: -9 };
-    this.banner = { t: BOSS_TIME, title: 'THE CORE', sub: 'cut it as many times as you can' };
+    this.banner = { t: BOSS_TIME, title: HALLOWEEN ? HNAMES.boss.toUpperCase() : 'THE CORE', sub: 'cut it as many times as you can' };
+    if (this.rocky) { this.rocky.react('flinch', 0.5); this.rocky.tilt = -0.16; }   // he looks up at it
     this.sfx.rise();
     this.music.duck(0.8);
   }
@@ -699,8 +740,10 @@ export class Game {
     ctx.save();
     if (this.shake > 0 && this.settings.shake) ctx.translate((Math.random() - 0.5) * this.shake * 1.6, (Math.random() - 0.5) * this.shake * 1.6);
     this.bg.draw(ctx);
-    if (this.power.stasis > 0) { ctx.fillStyle = 'rgba(130,90,109,0.1)'; ctx.fillRect(0, 0, W, H); }
+    if (this.power.stasis > 0) { ctx.fillStyle = C.stasis; ctx.fillRect(0, 0, W, H); }
     this.drawCracks(ctx);
+    // the host stands under everything that flies, so he never hides a target
+    if (this.rocky && this.state !== 'title') this.drawHost(ctx);
     this.drawPieces(ctx);
     this.drawParts(ctx);
     this.drawTargets(ctx);
@@ -711,9 +754,16 @@ export class Game {
     this.drawPopups(ctx);
     ctx.restore();
     if (this.flash > 0) { ctx.fillStyle = `rgba(${this.flashCol},${this.flash * 0.35})`; ctx.fillRect(0, 0, W, H); }
-    if (this.power.amp > 0) this.edgeGlow(ctx, '130,90,109', 0.22 + 0.06 * Math.sin(this.rt * 8));
+    if (this.power.amp > 0) this.edgeGlow(ctx, C.ampGlow, 0.22 + 0.06 * Math.sin(this.rt * 8));
     if (this.state !== 'title') this.drawHUD(ctx);
     if (this.phase === 'tutorial' && this.state === 'playing') this.drawTutorial(ctx);
+  }
+
+  // Jack-o'-Rocky in the bottom-left corner, small, feet on the bottom edge.
+  // Left, because the active powers are listed bottom right.
+  drawHost(ctx) {
+    const p = this.portrait, s = p ? 0.62 : 0.7;
+    this.rocky.draw(ctx, p ? 42 : 50, this.H - 7, s);
   }
 
   edgeGlow(ctx, rgb, a) {
@@ -732,14 +782,14 @@ export class Game {
       if (o.blown) ctx.globalAlpha = 0.5;
       if (o.type === 'power') {
         ctx.save(); ctx.rotate(this.rt * 1.4);
-        ctx.strokeStyle = 'rgba(130,90,109,0.85)'; ctx.lineWidth = 1.6; ctx.setLineDash([5, 6]);
+        ctx.strokeStyle = `rgba(${C.accentRgb},0.85)`; ctx.lineWidth = 1.6; ctx.setLineDash([5, 6]);
         ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
         ctx.restore();
       }
       ctx.rotate(o.rot);
       ctx.drawImage(sp.c, -sp.pad, -sp.pad, sp.pad * 2, sp.pad * 2);
       ctx.restore();
-      if (o.type === 'block' && this.blockHints > 0 && !o.blown && this.state === 'playing') this.label(ctx, o.x, o.y + o.r + 22, "SHIELDED · DON'T CUT");
+      if (o.type === 'block' && this.blockHints > 0 && !o.blown && this.state === 'playing') this.label(ctx, o.x, o.y + o.r + 22, HALLOWEEN ? "CURSED · DON'T CUT" : "SHIELDED · DON'T CUT");
     }
   }
   // a chart annotation: white slip, ink rule, mono capitals
@@ -749,9 +799,9 @@ export class Game {
     if ('letterSpacing' in ctx) ctx.letterSpacing = '1px';
     const w = ctx.measureText(text).width + 18;
     x = clamp(x, w / 2 + 6, this.W - w / 2 - 6);
-    ctx.fillStyle = 'rgba(255,255,255,0.94)'; ctx.fillRect(x - w / 2, y - 14, w, 21);
-    ctx.strokeStyle = '#161616'; ctx.lineWidth = 1; ctx.strokeRect(x - w / 2 + 0.5, y - 13.5, w - 1, 20);
-    ctx.fillStyle = '#161616'; ctx.fillText(text, x + 0.5, y + 1);
+    ctx.fillStyle = HALLOWEEN ? 'rgba(21,13,32,0.94)' : 'rgba(255,255,255,0.94)'; ctx.fillRect(x - w / 2, y - 14, w, 21);
+    ctx.strokeStyle = HALLOWEEN ? HW.pumpkin : '#161616'; ctx.lineWidth = 1; ctx.strokeRect(x - w / 2 + 0.5, y - 13.5, w - 1, 20);
+    ctx.fillStyle = C.ink; ctx.fillText(text, x + 0.5, y + 1);
     if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
     ctx.restore();
   }
@@ -767,7 +817,7 @@ export class Game {
       ctx.moveTo(-c * P, -s * P); ctx.lineTo(c * P, s * P); ctx.lineTo(c * P + nx * P, s * P + ny * P); ctx.lineTo(-c * P + nx * P, -s * P + ny * P);
       ctx.closePath(); ctx.clip();
       ctx.drawImage(sp.c, -sp.pad, -sp.pad, sp.pad * 2, sp.pad * 2);
-      ctx.strokeStyle = '#3D2731'; ctx.lineWidth = 1.8;
+      ctx.strokeStyle = HALLOWEEN ? 'rgba(255,214,160,0.85)' : '#3D2731'; ctx.lineWidth = 1.8;
       ctx.beginPath(); ctx.moveTo(-c * p.r, -s * p.r); ctx.lineTo(c * p.r, s * p.r); ctx.stroke();
       ctx.restore();
     }
@@ -776,12 +826,12 @@ export class Game {
     const b = this.boss;
     drawBoss(ctx, b);
     const left = clamp(1 - (b.t - 0.4) / BOSS_TIME, 0, 1);
-    ctx.strokeStyle = 'rgba(22,22,22,0.12)'; ctx.lineWidth = 4;
+    ctx.strokeStyle = C.rail; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.arc(b.x, b.y, 98, 0, Math.PI * 2); ctx.stroke();
-    ctx.strokeStyle = '#825A6D'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 4; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.arc(b.x, b.y, 98, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); ctx.stroke(); ctx.lineCap = 'butt';
     if (b.hits) {
-      ctx.fillStyle = '#161616'; ctx.textAlign = 'center';
+      ctx.fillStyle = C.ink; ctx.textAlign = 'center';
       ctx.font = `500 ${30 + b.punch * 8}px "IBM Plex Mono", ui-monospace, monospace`;
       ctx.fillText('x' + b.hits, b.x, b.y - 118);
     }
@@ -790,28 +840,32 @@ export class Game {
     for (const p of this.parts) {
       const k = 1 - p.t / p.life;
       if (p.kind === 'spark') {
-        ctx.fillStyle = `rgba(61,39,49,${k * 0.8})`;
+        ctx.fillStyle = `rgba(${C.spark},${k * 0.8})`;
         ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
       } else if (p.kind === 'glass' || p.kind === 'stone') {
         ctx.save();
         ctx.translate(p.x, p.y); ctx.rotate(p.rot);
         ctx.globalAlpha = Math.min(1, k * 1.7);
         ctx.beginPath(); ctx.moveTo(0, -p.size); ctx.lineTo(p.size * 0.8, p.size * 0.5); ctx.lineTo(-p.size * 0.7, p.size * 0.6); ctx.closePath();
-        if (p.kind === 'glass') { ctx.fillStyle = 'rgba(130,90,109,0.4)'; ctx.fill(); ctx.strokeStyle = 'rgba(61,39,49,0.85)'; ctx.lineWidth = 1; ctx.stroke(); }
+        if (p.kind === 'glass') {
+          if (p.col) { ctx.fillStyle = `rgba(${p.col},0.75)`; ctx.fill(); ctx.strokeStyle = 'rgba(21,13,32,0.7)'; }
+          else { ctx.fillStyle = HALLOWEEN ? 'rgba(255,138,42,0.7)' : 'rgba(130,90,109,0.4)'; ctx.fill(); ctx.strokeStyle = HALLOWEEN ? 'rgba(255,214,160,0.8)' : 'rgba(61,39,49,0.85)'; }
+          ctx.lineWidth = 1; ctx.stroke();
+        }
         else { ctx.fillStyle = p.col; ctx.fill(); }
         ctx.restore();
       } else if (p.kind === 'cut') {
         const c = Math.cos(p.ang), s = Math.sin(p.ang), L = p.len * (0.6 + 0.6 * (1 - k));
-        ctx.strokeStyle = `rgba(22,22,22,${k})`; ctx.lineWidth = 1 + 3 * k; ctx.lineCap = 'round';
+        ctx.strokeStyle = `rgba(${C.inkRgb},${k})`; ctx.lineWidth = 1 + 3 * k; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(p.x - c * L, p.y - s * L); ctx.lineTo(p.x + c * L, p.y + s * L); ctx.stroke();
         ctx.lineCap = 'butt';
       } else if (p.kind === 'ring') {
         const r = lerp(p.r0, p.r1, 1 - k * k);
-        ctx.strokeStyle = `rgba(82,53,66,${k * 0.7})`; ctx.lineWidth = 1 + 4 * k;
+        ctx.strokeStyle = `rgba(${C.ring},${k * 0.7})`; ctx.lineWidth = 1 + 4 * k;
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
       } else if (p.kind === 'star') {
         const s = p.size * (0.5 + (1 - k) * 0.9);
-        ctx.fillStyle = `rgba(255,255,255,${k})`; ctx.strokeStyle = `rgba(61,39,49,${k})`; ctx.lineWidth = 1;
+        ctx.fillStyle = HALLOWEEN ? `rgba(255,243,196,${k})` : `rgba(255,255,255,${k})`; ctx.strokeStyle = HALLOWEEN ? `rgba(255,138,42,${k})` : `rgba(61,39,49,${k})`; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(p.x, p.y - s); ctx.lineTo(p.x + s * 0.2, p.y - s * 0.2); ctx.lineTo(p.x + s, p.y); ctx.lineTo(p.x + s * 0.2, p.y + s * 0.2);
         ctx.lineTo(p.x, p.y + s); ctx.lineTo(p.x - s * 0.2, p.y + s * 0.2); ctx.lineTo(p.x - s, p.y); ctx.lineTo(p.x - s * 0.2, p.y - s * 0.2); ctx.closePath(); ctx.fill(); ctx.stroke();
       }
@@ -827,13 +881,13 @@ export class Game {
       ctx.textAlign = 'center';
       ctx.font = big ? `700 ${p.size}px "Instrument Sans", sans-serif` : `500 ${p.size}px "IBM Plex Mono", ui-monospace, monospace`;
       if (big && 'letterSpacing' in ctx) ctx.letterSpacing = '2.5px';
-      ctx.lineWidth = 5; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(247,244,245,0.95)';
+      ctx.lineWidth = 5; ctx.lineJoin = 'round'; ctx.strokeStyle = C.halo;
       ctx.strokeText(p.text, 0, 0);
       ctx.fillStyle = `rgb(${p.col})`; ctx.fillText(p.text, 0, 0);
       if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
       if (p.sub) {
         ctx.font = `500 ${Math.round(p.size * 0.8)}px "IBM Plex Mono", ui-monospace, monospace`;
-        ctx.strokeText(p.sub, 0, p.size * 1.15); ctx.fillStyle = '#161616'; ctx.fillText(p.sub, 0, p.size * 1.15);
+        ctx.strokeText(p.sub, 0, p.size * 1.15); ctx.fillStyle = C.ink; ctx.fillText(p.sub, 0, p.size * 1.15);
       }
       ctx.restore();
     }
@@ -849,15 +903,16 @@ export class Game {
         for (let i = 0; i < Math.min(n, pts.length); i++) (i ? ctx.lineTo(pts[i][0], pts[i][1]) : ctx.moveTo(pts[i][0], pts[i][1]));
         ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke();
       };
+      if (HALLOWEEN) { line(c.pts, 7, 'rgba(255,138,42,0.22)'); line(c.pts, 2, HW.pumpkin); if (grow >= 1) line(c.br, 1.4, 'rgba(255,190,120,0.8)'); continue; }
       line(c.pts, 7, 'rgba(130,90,109,0.18)'); line(c.pts, 2, '#161616');
       if (grow >= 1) line(c.br, 1.4, 'rgba(22,22,22,0.8)');
     }
   }
   drawTutorial(ctx) {
     const W = this.W, H = this.H, k = (this.rt * 0.9) % 1;
-    this.label(ctx, W / 2, H * 0.2, this.tutStage === 0 ? 'SWIPE THROUGH THE GLASS' : 'ONE SWIPE THROUGH ALL THREE');
+    this.label(ctx, W / 2, H * 0.2, this.tutStage === 0 ? (HALLOWEEN ? 'SWIPE THROUGH THE PUMPKIN' : 'SWIPE THROUGH THE GLASS') : 'ONE SWIPE THROUGH ALL THREE');
     const x0 = W * 0.28, x1 = W * 0.72, y = H * 0.5, x = lerp(x0, x1, Math.min(1, k * 1.4));
-    ctx.strokeStyle = `rgba(22,22,22,${0.5 * (1 - k)})`; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.setLineDash([2, 9]);
+    ctx.strokeStyle = `rgba(${C.inkRgb},${0.5 * (1 - k)})`; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.setLineDash([2, 9]);
     ctx.beginPath(); ctx.moveTo(x0, y + 30); ctx.lineTo(x, lerp(y + 30, y - 30, (x - x0) / (x1 - x0))); ctx.stroke();
     ctx.setLineDash([]); ctx.lineCap = 'butt';
   }
@@ -867,48 +922,53 @@ export class Game {
     const spacing = (px) => { if ('letterSpacing' in ctx) ctx.letterSpacing = px + 'px'; };
     ctx.save();
     const top = ctx.createLinearGradient(0, 0, 0, 130);
-    top.addColorStop(0, 'rgba(247,244,245,0.9)'); top.addColorStop(1, 'rgba(247,244,245,0)');
+    top.addColorStop(0, `rgba(${C.top},${C.topA})`); top.addColorStop(1, `rgba(${C.top},0)`);
     ctx.fillStyle = top; ctx.fillRect(0, 0, W, 130);
     ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(22,22,22,0.6)'; ctx.font = `500 10px ${MONO}`;
+    ctx.fillStyle = C.soft; ctx.font = `500 10px ${MONO}`;
     spacing(1.6);
     ctx.fillText(this.mode === 'daily' ? 'SCORE / DAILY' : this.mode === 'classic' ? 'SCORE / CLASSIC' : 'SCORE', 20, 30);
     spacing(0);
-    ctx.fillStyle = '#161616';
+    ctx.fillStyle = C.ink;
     ctx.font = `700 ${46 + this.scorePulse * 6}px ${SANS}`;
     spacing(-1.5);
     ctx.fillText(String(this.score), 18, 74);
     spacing(0);
     const beat = this.score > this.best && this.best > 0;
-    ctx.fillStyle = beat ? '#825A6D' : 'rgba(22,22,22,0.5)';
+    ctx.fillStyle = beat ? C.accent : C.faint;
     ctx.font = `500 11px ${MONO}`;
     ctx.fillText(beat ? 'new best' : `best ${this.best}`, 20, 93);
     // blitz: the chain of combos, with the time left to keep it alive
     const tier = Math.min(6, Math.floor(this.chain / 3));
     if (this.chain > 0 && this.phase === 'round') {
       const left = clamp(1 - (this.rt - this.lastComboAt) / BLITZ_WINDOW, 0, 1);
-      ctx.fillStyle = tier ? '#523542' : 'rgba(22,22,22,0.6)'; ctx.font = `600 10px ${MONO}`;
+      ctx.fillStyle = tier ? C.deep : C.soft; ctx.font = `600 10px ${MONO}`;
       spacing(1.2);
       ctx.fillText(tier ? `${BLITZ[tier].toUpperCase()} +${tier * 5}` : `CHAIN ${this.chain}/3`, 20, 114);
       spacing(0);
-      ctx.fillStyle = 'rgba(22,22,22,0.12)'; ctx.fillRect(20, 120, 96, 3);
-      ctx.fillStyle = tier ? '#825A6D' : 'rgba(22,22,22,0.55)'; ctx.fillRect(20, 120, 96 * left, 3);
+      ctx.fillStyle = C.rail; ctx.fillRect(20, 120, 96, 3);
+      ctx.fillStyle = tier ? C.accent : HALLOWEEN ? 'rgba(243,231,236,0.6)' : 'rgba(22,22,22,0.55)'; ctx.fillRect(20, 120, 96 * left, 3);
     }
 
     ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(22,22,22,0.6)'; ctx.font = `500 10px ${MONO}`;
+    ctx.fillStyle = C.soft; ctx.font = `500 10px ${MONO}`;
     spacing(1.6); ctx.fillText(this.timed ? 'TIME' : 'CRACKS', W - 20, 30); spacing(0);
     if (this.timed) {
       const sec = Math.max(0, Math.ceil(this.timeLeft)), low = sec <= 10 && this.phase === 'round';
-      ctx.fillStyle = this.power.stasis > 0 ? '#825A6D' : low ? '#825A6D' : '#161616';
+      ctx.fillStyle = this.power.stasis > 0 ? (HALLOWEEN ? HW.slime : '#825A6D') : low ? C.accent : C.ink;
       ctx.font = `600 ${low ? 36 : 32}px ${SANS}`;
       ctx.fillText(`${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`, W - 18, 64);
     } else {
       for (let i = 0; i < 3; i++) {
         const cx = W - 30 - i * 26, hit = this.cracks > 2 - i;
         ctx.beginPath(); ctx.arc(cx, 52, 9, 0, Math.PI * 2);
-        if (hit) { ctx.strokeStyle = 'rgba(22,22,22,0.3)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx - 5, 47); ctx.lineTo(cx + 1, 52); ctx.lineTo(cx - 2, 57); ctx.strokeStyle = 'rgba(22,22,22,0.5)'; ctx.stroke(); }
-        else { ctx.fillStyle = '#825A6D'; ctx.fill(); ctx.strokeStyle = '#3D2731'; ctx.lineWidth = 1.5; ctx.stroke(); }
+        if (hit) { ctx.strokeStyle = `rgba(${C.inkRgb},0.3)`; ctx.lineWidth = 1.5; ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx - 5, 47); ctx.lineTo(cx + 1, 52); ctx.lineTo(cx - 2, 57); ctx.strokeStyle = `rgba(${C.inkRgb},0.5)`; ctx.stroke(); }
+        else if (HALLOWEEN) {
+          // a little pumpkin per life
+          ctx.fillStyle = HW.pumpkin; ctx.fill(); ctx.strokeStyle = HW.pumpkinDeep; ctx.lineWidth = 1.5; ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx, 44); ctx.lineTo(cx, 60); ctx.strokeStyle = 'rgba(160,60,10,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx, 44); ctx.lineTo(cx + 2.5, 39.5); ctx.strokeStyle = '#6E9A3A'; ctx.lineWidth = 2.2; ctx.stroke();
+        } else { ctx.fillStyle = '#825A6D'; ctx.fill(); ctx.strokeStyle = '#3D2731'; ctx.lineWidth = 1.5; ctx.stroke(); }
       }
     }
     // active power-ups
@@ -916,16 +976,16 @@ export class Game {
     for (const [k, name] of [['frenzy', 'overclock'], ['amp', 'amp'], ['stasis', 'stasis']]) {
       if (this.power[k] <= 0) continue;
       const P = POWERS[name], frac = this.power[k] / P.dur;
-      ctx.fillStyle = '#161616'; ctx.font = `500 11px ${MONO}`;
-      ctx.fillText(P.name.toUpperCase(), W - 20, py);
-      ctx.fillStyle = 'rgba(22,22,22,0.14)'; ctx.fillRect(W - 130, py + 5, 110, 3);
-      ctx.fillStyle = '#825A6D'; ctx.fillRect(W - 20 - 110 * frac, py + 5, 110 * frac, 3);
+      ctx.fillStyle = C.ink; ctx.font = `500 11px ${MONO}`;
+      ctx.fillText(PNAME(name).name.toUpperCase(), W - 20, py);
+      ctx.fillStyle = HALLOWEEN ? 'rgba(243,231,236,0.16)' : 'rgba(22,22,22,0.14)'; ctx.fillRect(W - 130, py + 5, 110, 3);
+      ctx.fillStyle = C.accent; ctx.fillRect(W - 20 - 110 * frac, py + 5, 110 * frac, 3);
       py -= 24;
     }
     if (this.bladeLock > 0) {
-      ctx.textAlign = 'center'; ctx.fillStyle = `rgba(22,22,22,${Math.min(1, this.bladeLock * 3)})`;
+      ctx.textAlign = 'center'; ctx.fillStyle = `rgba(${HALLOWEEN ? HW.ghostGlow : '22,22,22'},${Math.min(1, this.bladeLock * 3)})`;
       ctx.font = `700 14px ${SANS}`; spacing(5);
-      ctx.fillText('SHIELDED', W / 2, this.H * 0.5); spacing(0);
+      ctx.fillText(HALLOWEEN ? 'CURSED' : 'SHIELDED', W / 2, this.H * 0.5); spacing(0);
     }
     if (this.banner) {
       const a = Math.min(1, this.banner.t * 2.5), y = this.portrait ? 132 : 98;
@@ -933,12 +993,12 @@ export class Game {
       ctx.font = `700 15px ${SANS}`;
       spacing(5);
       const bw = ctx.measureText(this.banner.title).width / 2 + 18;
-      ctx.fillStyle = `rgba(22,22,22,${a})`;
+      ctx.fillStyle = `rgba(${C.inkRgb},${a})`;
       ctx.fillText(this.banner.title, W / 2 + 2.5, y);
       spacing(0);
-      ctx.strokeStyle = `rgba(22,22,22,${a * 0.7})`; ctx.lineWidth = 1;
+      ctx.strokeStyle = `rgba(${HALLOWEEN ? C.accentRgb : '22,22,22'},${a * 0.7})`; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(W / 2 - bw - 36, y - 5.5); ctx.lineTo(W / 2 - bw, y - 5.5); ctx.moveTo(W / 2 + bw, y - 5.5); ctx.lineTo(W / 2 + bw + 36, y - 5.5); ctx.stroke();
-      ctx.fillStyle = `rgba(82,53,66,${a})`;
+      ctx.fillStyle = `rgba(${C.deepRgb},${a})`;
       ctx.font = `500 12px ${MONO}`;
       ctx.fillText(this.banner.sub, W / 2, y + 22);
     }
