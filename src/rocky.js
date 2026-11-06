@@ -41,7 +41,7 @@ export function applySkin(id) {
 // the costume
 const CAPE = {
   out: HW.plum, outHi: '#563072', outLo: '#24112F',
-  lin: '#8C1D3A', linLo: '#5C1129', rim: 'rgba(194,154,175,0.7)',
+  lin: '#8C1D3A', linLo: '#5C1129',
 };
 const CUT = { wall: HW.pumpkinDeep, fire: HW.pumpkin, core: '#FFD36B', hot: '#FFF3C4' };
 const EMBER = ['#E8661E', HW.pumpkin, '#FFC24A', HW.pumpkinDeep, '#FFA03A'];
@@ -178,11 +178,6 @@ function drawCapeBack(ctx, t, st, hipY) {
   poly(ctx, [[-6, -49], [-12, -30], [out[9][0] - 2, out[9][1] - 3], [out[10][0], out[10][1] - 1], [-6, -28], [-2, -49]], CAPE.outHi);
   poly(ctx, [[-17, -46], [-21 - 2 * st, -28], [out[6][0] + 1, out[6][1] - 1], [out[7][0], out[7][1] - 2], [-16 - 2 * st, -26]], CAPE.outLo);
   outline(ctx, out, 1.4);
-  if (!FLASH) {
-    // moonlight on the back edge, so it reads on a night sheet
-    path(ctx, [out[2], out[3], out[4], out[5]], false);
-    ctx.strokeStyle = CAPE.rim; ctx.lineWidth = 1; ctx.stroke();
-  }
   return n;
 }
 // high pointed collar behind the head; red inside
