@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Your swipe is the fault line. A glass-shattering arcade game for the Seismic community.",
+  "description": "Fault Line: Halloween edition. A slicing arcade game for the Seismic community, hosted by Jack-o'-Rocky.",
   "scripts": {
     "dev": "node serve.mjs 5174",
     "start": "node serve.mjs 5174",

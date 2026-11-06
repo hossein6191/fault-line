@@ -6,6 +6,8 @@ tossed across the chart, your swipe cuts them, and you never cut a cursed
 potion. Jack-o'-Rocky, the Seismic mascot in costume, hosts. Plays on phones
 (portrait or landscape) and on desktop.
 
+**Play it free in the browser: https://fault-line-neon.vercel.app/**
+
 Fan-made. Not an official Seismic product. No wallet, no account.
 
 ![Fault Line Halloween edition](design/halloween-wide.png)
@@ -54,68 +56,3 @@ Fan-made. Not an official Seismic product. No wallet, no account.
 
 Missions (three at a time, 36 in all) raise a rank from Magnitude 1.0 to 9.0
 and unlock blades.
-
-## Run locally
-
-Static files, no build step. The local server also runs the leaderboard API
-against an in-memory store, so the online flow works without Vercel:
-
-```bash
-node serve.mjs 5174
-```
-
-Then open http://127.0.0.1:5174/. URL flags: `?nopause=1` keeps the round
-running when the tab loses focus, `?pwa=1` enables the service worker on
-localhost, `?debug=1` exposes the game as `window.__fl`.
-
-```bash
-npm test
-```
-
-runs a headless smoke test: the real loop with a swiping bot, checking for
-exceptions, NaNs, runaway object counts, that rounds end, that a seed gives
-the same course, and that the server rules accept an honest round.
-
-## Deploy on Vercel
-
-1. Import the repository (framework preset: Other, no build command).
-2. Storage → connect an **Upstash Redis** database to the project. Magnitude
-   Run's database is fine: every key here starts with `fl:`.
-3. Optional: add `RUN_SECRET`, a long random string (`openssl rand -hex 32`).
-   Without it the server signs with the Redis token.
-4. Deploy. Without Redis the game still runs and keeps scores in the browser.
-
-### API
-
-| endpoint | purpose |
-| --- | --- |
-| `POST /api/start` | signed, single-use token carrying the start time, and the day's seed |
-| `POST /api/submit` | plausibility checks, then the best score per player id on that board |
-| `GET /api/board?board=arcade\|classic\|daily` | top list and your own rank |
-
-The checks are for honest players (round length, score against what the
-counts could have paid, single-use tokens, rate limits). The round is played
-in the browser, so a determined cheat can still post a believable score.
-
-## How it is built
-
-| file | what |
-| --- | --- |
-| `src/game.js` | loop, wave spawner, physics, cutting, combos and blitz, powers, The Great Pumpkin, HUD |
-| `src/targets.js` | every tossed treat and potion, drawn once and cached as a sprite |
-| `src/blade.js` | the glowing blade and its segment tests |
-| `src/paper.js` | the night sheet and live pen traces that react to shakes and quakes |
-| `src/rocky.js` | Jack-o'-Rocky, drawn in code, and the host that reacts to play |
-| `src/theme.js` | the Halloween palette and names |
-| `src/input.js` | Pointer Events, raw and coalesced samples, two blades |
-| `src/audio.js`, `src/music.js` | music and sound effects, built live with Web Audio |
-| `src/missions.js` | missions, rank, blade unlocks |
-| `src/card.js` | 1200×630 share card |
-| `design/halloween.html` | redraws the posters (`halloween-wide.png`, `halloween-square.png`) from the game's code |
-| `api/` | Vercel functions |
-
-Notes from the research that shaped it: one point per target and combo = size
-(the Fruit Ninja economy), about two seconds of hang time, hit boxes larger
-than the art for treats and smaller for potions, no potions in the first six
-seconds or during Witching Hour, a blade that only cuts while it is moving,
-and samples taken from every pointer event rather than once per frame.
