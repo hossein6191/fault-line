@@ -13,7 +13,7 @@
 </style>
 </head>
 <body>
-<div class="bar">The #ROCKYHalloween poster for Fault Line, drawn from the game's own code (night sheet, treats, Jack-o'-Rocky). Open through <code>node serve.mjs</code> with <code>?theme=halloween</code>; <code>window.__saveAll()</code> writes the files.</div>
+<div class="bar">The Halloween poster for Fault Line, drawn from the game's own code (night sheet, treats, Jack-o'-Rocky). Open through <code>node serve.mjs</code> with <code>?theme=halloween</code>; <code>window.__saveAll()</code> writes the files.</div>
 <div class="grid" id="grid"></div>
 <script type="module">
   import { HW } from '../src/theme.js';
@@ -210,10 +210,7 @@
       wordmark(g, 'Fault Line', 84, 290, 168);
       g.font = '500 30px "Instrument Sans", sans-serif'; g.fillStyle = HW.inkSoft; g.textAlign = 'left';
       g.fillText('Slice the treats. Spare the cursed potions.', 92, 360);
-      g.font = '700 64px "Instrument Sans", sans-serif'; g.fillStyle = HW.pumpkin;
-      g.shadowColor = `rgba(${HW.ember},0.55)`; g.shadowBlur = 18;
-      g.fillText('#ROCKYHalloween', 92, 838); g.shadowBlur = 0;
-      mono(g, 'SEISMIC COMMUNITY BUILD · NO WALLET', 96, 870, 16, 'rgba(243,231,236,0.6)', 0.16, 500);
+      mono(g, 'SEISMIC COMMUNITY BUILD · NO WALLET', 96, 858, 18, 'rgba(243,231,236,0.68)', 0.16, 500);
     } else {
       wash(g, 340, 230, 460, 0.6);
       const cx = 360, cy = 640;
@@ -231,10 +228,7 @@
       wordmark(g, 'Fault Line', 66, 252, 150);
       g.font = '500 28px "Instrument Sans", sans-serif'; g.fillStyle = HW.inkSoft; g.textAlign = 'left';
       g.fillText('Slice the treats. Spare the cursed potions.', 74, 316);
-      g.font = '700 60px "Instrument Sans", sans-serif'; g.fillStyle = HW.pumpkin;
-      g.shadowColor = `rgba(${HW.ember},0.55)`; g.shadowBlur = 18;
-      g.fillText('#ROCKYHalloween', 74, 990); g.shadowBlur = 0;
-      mono(g, 'SEISMIC COMMUNITY BUILD · NO WALLET', 78, 1030, 15, 'rgba(243,231,236,0.6)', 0.16, 500);
+      mono(g, 'SEISMIC COMMUNITY BUILD · NO WALLET', 78, 1024, 17, 'rgba(243,231,236,0.68)', 0.16, 500);
     }
   }
 
