@@ -218,10 +218,6 @@ function drawTorso(ctx, cracks, crackGlow, glow) {
     [[-12, -38], [-14, -12]], [[10, -38], [16, -36], [14, -14]],
     [[-5, -44], [-1, -41], [-3, -38]], [[20, -30], [24, -27]],
   ]);
-  if (!FLASH) {
-    path(ctx, [[-12, -7], [-22, -12], [-26, -26], [-22, -42], [-10, -49]], false);
-    ctx.strokeStyle = 'rgba(255,170,110,0.4)'; ctx.lineWidth = 0.9; ctx.stroke();
-  }
   // the ember: the Seismic logomark burning in its dark socket
   const a = Math.max(0, Math.min(1.4, glow)), gx = 2, gy = -26, GS = 9.5;
   if (!FLASH) {
@@ -292,8 +288,6 @@ function drawHead(ctx, eye, mouth, fire) {
   poly(ctx, [[3.4, -32], [7, -31.4], [7.4, -29.6], [4.6, -30]], '#5E8A34');
   outline(ctx, stem, 1.1);
   if (!FLASH) {
-    path(ctx, [[-10, 2], [-13, 0], [-15, -10], [-11, -21], [-2, -26]], false);
-    ctx.strokeStyle = 'rgba(255,170,110,0.45)'; ctx.lineWidth = 0.9; ctx.stroke();
     // firelight spilling over the face
     const g = ctx.createRadialGradient(7, -8, 1, 7, -8, 15);
     g.addColorStop(0, `rgba(${HW.ember},${0.32 * fire})`);
